@@ -45,6 +45,9 @@ if __name__ == "__main__":
         robot_velocity_vector = A_inv @ speeds_vector
 
         vx, vy, w = robot_velocity_vector
+        #Drop noise due to calculation in program inaccuracies
+        if abs(w) < 0.0000001:
+            w = 0
 
         # Store velocities for plotting
         vx_history.append(vx)
