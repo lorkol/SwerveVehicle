@@ -3,6 +3,11 @@ import matplotlib.pyplot as plt
 
 
 from SwerveRobot import SwerveRobot
+# --- NEW: Function to add Gaussian noise to a dataset ---
+def add_gaussian_noise(data, mean, std_dev):
+    """Adds Gaussian noise to a NumPy array."""
+    noise = np.random.normal(mean, std_dev, data.shape)
+    return data + noise
 
 if __name__ == "__main__":
     swerve_robot: SwerveRobot = SwerveRobot(0.5, 0.5, 0.05)
@@ -13,8 +18,16 @@ if __name__ == "__main__":
     time = np.arange(0, total_time + dt, dt)
     num_steps = len(time)
 
+    # Define the noise parameters
+    angle_noise_std = 0.  # Standard deviation for angle noise in degrees
+    speed_noise_std = 3.  # Standard deviation for speed noise in rad/s
+
     wheel_speeds = np.full((4,num_steps), 10)
     wheel_angles = np.full((4, num_steps), np.linspace(0, 360, num_steps))
+
+    # Add Gaussian noise
+    wheel_speeds = add_gaussian_noise(wheel_speeds, 0, speed_noise_std)
+    wheel_angles = add_gaussian_noise(wheel_angles, 0, angle_noise_std)
 
     # --- 4. Main Simulation Loop (Replicates the Simulink diagram) ---
     # Initialize state variables
