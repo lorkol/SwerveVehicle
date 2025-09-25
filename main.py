@@ -1,13 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
+from Misc import add_gaussian_noise
 from SwerveRobot import SwerveRobot
-# --- NEW: Function to add Gaussian noise to a dataset ---
-def add_gaussian_noise(data, mean, std_dev):
-    """Adds Gaussian noise to a NumPy array."""
-    noise = np.random.normal(mean, std_dev, data.shape)
-    return data + noise
 
 if __name__ == "__main__":
     swerve_robot: SwerveRobot = SwerveRobot(0.5, 0.5, 0.05)
