@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     # Define the noise parameters
     angle_noise_std = 0.  # Standard deviation for angle noise in degrees
-    speed_noise_std = 3.  # Standard deviation for speed noise in rad/s
+    speed_noise_std = 5.  # Standard deviation for speed noise in rad/s
 
     wheel_speeds = np.full((4,num_steps), 10)
     wheel_angles = np.full((4, num_steps), np.linspace(0, 360, num_steps))
