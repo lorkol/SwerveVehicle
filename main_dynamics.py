@@ -176,6 +176,16 @@ axs[2][0].set_ylabel('Acceleration ($m/s^2$ or $rad/s^2$)')
 axs[2][0].legend()
 axs[2][0].grid(True)
 
+# 4. Plot positions (Robot Frame Position)
+axs[0][1].plot(TIME_POINTS, x_G, label='Robot x')
+axs[0][1].plot(TIME_POINTS, y_G, label='Robot y')
+axs[0][1].set_title('Robot Path (Robot Frame: $x_I$ vs $y_I$)')
+axs[0][1].set_xlabel('Time (s)')
+axs[0][1].set_ylabel('Position')
+axs[0][1].grid(True)
+axs[0][1].legend()
+axs[0][1].set_aspect('equal', adjustable='box')  # Keep the path visually accurate
+
 
 # 4. Plot Velocities (Robot and Rotational)
 axs[1][1].plot(TIME_POINTS, vx_R, label='$v_{xI}$ (Robot $x$)', linewidth=4)
@@ -188,7 +198,7 @@ axs[1][1].legend()
 axs[1][1].grid(True)
 
 # 5. Plot Accelerations (In Robot Frame)
-axs[2][1].plot(TIME_POINTS, ax_R, label='$a_{xI}$ (Robot $x$)')
+axs[2][1].plot(TIME_POINTS, ax_R, label='$a_{xI}$ (Robot $x$)', linewidth=4)
 axs[2][1].plot(TIME_POINTS, ay_R, label='$a_{yI}$ (Robot $y$)')
 axs[2][1].plot(TIME_POINTS, a_theta, label='$a_{\\theta}$ (Angular)')
 axs[2][1].set_title('Accelerations over Time (Robot Frame $a_{xI}$, $a_{yI}$)')
