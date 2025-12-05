@@ -1,11 +1,11 @@
 
 from enum import Enum, auto
-from typing import TypeAlias
+from typing import Tuple, TypeAlias
 
 
-Point2D: TypeAlias = tuple[float, float]
+Point2D: TypeAlias = Tuple[float, float]
 
-State: TypeAlias = tuple[float, float, float]  # (x, y, theta)
+State: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
 '''Represents (x, y, theta) the state of the vehicle in 2D space with orientation.'''
 
 class ConvexShape(Enum):

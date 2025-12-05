@@ -6,7 +6,7 @@ from typing import List, Tuple, Optional
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-from PathPlanning.HybridAStarPlanner import ObstacleChecker
+from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
 from Types import State
 
