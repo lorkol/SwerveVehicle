@@ -1,0 +1,14 @@
+{
+    "Dimensions": {
+        "Length": 1.0,
+        "Width": 1.0
+  },
+  "Mass": 20.0,
+  "Inertia": 5.0,
+  "Max Wheel Rotation Speed": 10.0,
+  "Max Wheel Acceleration": 5.0,
+  "Max Wheel Torque": 15.0,
+  "Max Steering Speed": 30.0,
+  "Max Steering Acceleration": 20.0,
+  "Max Steering Torque": 10.0
+}
