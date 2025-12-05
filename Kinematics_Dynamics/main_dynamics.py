@@ -1,7 +1,9 @@
+from typing import Tuple
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 from scipy.integrate import odeint
+from scipy.optimize import minimize
 
 # --- INPUT PARAMETERS: Modify these values to run different scenarios ---
 TIME_TOTAL = 10.0  # Total simulation time (s)
@@ -94,7 +96,80 @@ def swerve_dynamics_ode(X: np.ndarray, t: float, M_mat: np.ndarray, wheel_angles
     return dXdt
 
 
+def swerve_inverse_kinematics_analytical(accels_R: np.ndarray, M_mat: np.ndarray,
+                                          l: float, w: float, r: float) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Analytical inverse kinematics: Find steering angles and wheel torques
+    given desired accelerations in Robot Frame.
+    
+    Strategy:
+    1. Point all wheels in direction of linear acceleration (for efficiency)
+    2. Distribute torques asymmetrically to create angular acceleration
+    
+    This naturally creates:
+    - Faster wheels on one side for rotation
+    - All wheels pointing same direction for linear motion
+    
+    Args:
+        accels_R: Desired accelerations [ax_R, ay_R, a_theta]
+        M_mat: Mass/inertia matrix (3x3)
+        l: Half-length of robot
+        w: Half-width of robot
+        r: Wheel radius
+        
+    Returns:
+        (wheel_angles, wheel_torques): Wheel angles and torques
+    """
+    # Step 1: Calculate desired forces in Robot Frame
+    F_R = M_mat.dot(accels_R)  # F = M * a
+    Fx_R, Fy_R, Tau_theta = F_R
+    
+    # Step 2: Find the direction all wheels should point for linear motion
+    # This minimizes steering and is most efficient
+    F_linear = np.sqrt(Fx_R**2 + Fy_R**2)
+    
+    if F_linear < 1e-6:  # Nearly zero linear force - only rotation
+        delta_all = 0.0  # Arbitrary direction (no preferred direction)
+    else:
+        delta_all = np.arctan2(Fy_R, Fx_R)
+    
+    # All wheels point the same direction
+    wheel_angles = np.array([delta_all, delta_all, delta_all, delta_all])
+    
+    # Step 3: Build B matrix with this common angle
+    B_mat = build_B(wheel_angles, l, w)
+    
+    # Step 4: Solve for wheel torques to produce both linear AND angular acceleration
+    # We have 3 equations (Fx, Fy, Tau) and 4 unknowns (tau1, tau2, tau3, tau4)
+    # Use least squares to find the minimum-norm solution
+    # This will automatically make wheels on one side faster for rotation
+    
+    wheel_forces = np.linalg.lstsq(B_mat, F_R, rcond=None)[0]
+    wheel_torques = r * wheel_forces
+    
+    return wheel_angles, wheel_torques
+
+
+
 # --- MAIN EXECUTION ---
+
+# Example: Inverse kinematics
+print("=== INVERSE KINEMATICS EXAMPLE ===")
+desired_accels = np.array([2.0, 0.5, 0.1])  # ax_R, ay_R, a_theta
+print(f"Desired accelerations (Robot Frame): {desired_accels}")
+print()
+
+# RECOMMENDED: Analytical solution (fast, no optimization needed)
+print("✓ Analytical Solution (Fast):")
+angles_analytical, torques_analytical = swerve_inverse_kinematics_analytical(
+    desired_accels, M_MATRIX, L, W, r
+)
+print(f"  Steering angles: {np.degrees(angles_analytical)}°")
+print(f"  Wheel torques: {torques_analytical}")
+print()
+
+
+# --- FORWARD DYNAMICS SIMULATION ---
 
 # Print initial acceleration for verification
 B_initial = build_B(WHEEL_ANGLES, L, W)

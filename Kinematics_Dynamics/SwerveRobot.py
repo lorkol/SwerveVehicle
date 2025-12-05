@@ -11,6 +11,7 @@ class SwerveRobot:
         '''Robot wheel radius'''
 
     def create_A_Matrix(self, phi1: float, phi2: float, phi3: float, phi4: float) -> NDArray[np.float64]:
+        """Creates the A matrix for the swerve robot based on wheel angles in degrees."""
         phi1 = np.radians(phi1)
         phi2 = np.radians(phi2)
         phi3 = np.radians(phi3)
