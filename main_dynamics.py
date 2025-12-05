@@ -4,17 +4,17 @@ import matplotlib.pyplot as plt
 from scipy.integrate import odeint
 
 # --- INPUT PARAMETERS: Modify these values to run different scenarios ---
-TIME_TOTAL = 20.0  # Total simulation time (s)
+TIME_TOTAL = 10.0  # Total simulation time (s)
 TIME_STEPS = 2000  # Number of simulation steps
 
 # Command Inputs: Torque applied to all four wheels (FR, FL, RL, RR)
-BASE_TORQUE = 0.1  # N*m
+BASE_TORQUE = 1.  # N*m
 # Example: Apply a slight torque asymmetry to induce rotation
 WHEEL_TORQUES = np.array([1. * BASE_TORQUE, 1. * BASE_TORQUE, 1. * BASE_TORQUE, 1. * BASE_TORQUE])
 
 # Command Inputs: Steering angle for all four wheels (FR, FL, RL, RR)
 # Example: Steer slightly to the right to see a pronounced curve
-ANGLE_DEGREE = 30.0  # Try 0.0 for straight or 15.0 for a curve
+ANGLE_DEGREE = 0.0  # Try 0.0 for straight or 15.0 for a curve
 WHEEL_ANGLES = np.radians(np.array([ANGLE_DEGREE, ANGLE_DEGREE, ANGLE_DEGREE, ANGLE_DEGREE]))
 
 # --- ROBOT CONSTANTS ---
