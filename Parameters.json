@@ -1,3 +1,33 @@
 {
-    
+    "Path Planning":
+    {
+        "AStarPlanner":
+        {
+            "grid_resolution": 0.5,
+            "angle_resolution": 0.39269908169872414,
+            "max_iterations": 10000,
+            "pos_tolerance": 0.5
+        },
+        "HybridAStarPlanner":
+        {
+            "grid_resolution": 0.5,
+            "angle_bins": 16,
+            "max_iterations": 10000,
+            "pos_tolerance": 0.5
+        }
+    },
+    "Control":
+    {
+        "MPC":
+        {
+            
+        }
+    },
+    "Obstacle Detection":
+    {
+        "SimpleObstacleDetector":
+        {
+            "path_num_samples": 20
+        }
+    }
 }

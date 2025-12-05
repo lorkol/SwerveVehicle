@@ -32,28 +32,28 @@ class HybridAStarPlanner(Planner):
             motion_primitives: List of (dx, dy, dtheta) primitives. If None, use default 16 primitives.
         """
         self.obstacle_checker: ObstacleChecker = obstacle_checker
-        self.grid_resolution: float = grid_resolution
+        self._grid_resolution: float = grid_resolution
         '''The discretization step for x and y.'''
-        self.angle_bins: int = angle_bins
+        self._angle_bins: int = angle_bins
         '''The number of discrete bins for theta.'''
-        self.angle_step: float = 2 * math.pi / angle_bins
+        self._angle_step: float = 2 * math.pi / angle_bins
         '''The discretization step for theta.'''
-        self.max_iterations: int = max_iterations
-        self.closed_set: set[Tuple[int, int, int]] = set()  # (grid_x, grid_y, angle_bin)
+        self._max_iterations: int = max_iterations
+        self._closed_set: set[Tuple[int, int, int]] = set()  # (grid_x, grid_y, angle_bin)
         ''' The set of visited discrete states.'''
-        self.open_set: List[Node] = []
+        self._open_set: List[Node] = []
         '''The priority queue of nodes to expand.'''
-        self.g_values: Dict[Tuple[int, int, int], float] = {}
+        self._g_values: Dict[Tuple[int, int, int], float] = {}
         '''The cost-to-come for each discrete state.'''
-        self.world_bounds: Tuple[Tuple[float, float], Tuple[float, float]] = world_bounds
+        self._world_bounds: Tuple[Tuple[float, float], Tuple[float, float]] = world_bounds
         '''The world boundaries as ((x_min, x_max), (y_min, y_max)).'''
         
         # Define motion primitives for holonomic robot
         # Can move in any direction continuously
         if motion_primitives is None:
-            self.motion_primitives = self._generate_default_primitives()
+            self._motion_primitives = self._generate_default_primitives()
         else:
-            self.motion_primitives = motion_primitives
+            self._motion_primitives = motion_primitives
     
     def _generate_default_primitives(self) -> List[Tuple[float, float, float]]:
         """Generate default motion primitives for holonomic system."""
@@ -71,7 +71,7 @@ class HybridAStarPlanner(Planner):
             (1, -1),  # Diagonal down-right
         ]
         
-        base_distance = self.grid_resolution
+        base_distance = self._grid_resolution
         
         for dx_dir, dy_dir in directions:
             # Base movement
@@ -79,12 +79,12 @@ class HybridAStarPlanner(Planner):
             dy = dy_dir * base_distance
             
             # No rotation, slight rotation, or opposite steering
-            for dtheta in [-self.angle_step, 0, self.angle_step]:
+            for dtheta in [-self._angle_step, 0, self._angle_step]:
                 primitives.append((dx, dy, dtheta))
         
         return primitives
     
-    def plan(self, start: State, goal: State, ) -> Optional[List[State]]:
+    def plan(self, start: State, goal: State) -> Optional[List[State]]:
         """
         Plan a path from start to goal using Hybrid A*.
         
@@ -106,31 +106,31 @@ class HybridAStarPlanner(Planner):
             return None
         
         # Initialize
-        self.closed_set.clear()
-        self.open_set.clear()
-        self.g_values.clear()
+        self._closed_set.clear()
+        self._open_set.clear()
+        self._g_values.clear()
         
         start_node = Node(
             state=start,
             g_cost=0.0,
             h_cost=self._heuristic(start, goal),
         )
-        heapq.heappush(self.open_set, start_node)
+        heapq.heappush(self._open_set, start_node)
         
         start_key = self._discretize_state(start)
-        self.g_values[start_key] = 0.0
+        self._g_values[start_key] = 0.0
         
         iterations = 0
         
-        while self.open_set and iterations < self.max_iterations:
+        while self._open_set and iterations < self._max_iterations:
             iterations += 1
             
             # Get node with lowest f_cost
-            current_node = heapq.heappop(self.open_set)
+            current_node = heapq.heappop(self._open_set)
             current_key = self._discretize_state(current_node.state)
             
             # Skip if already processed
-            if current_key in self.closed_set:
+            if current_key in self._closed_set:
                 continue
             
             # Check if goal reached
@@ -138,26 +138,23 @@ class HybridAStarPlanner(Planner):
                 return self._reconstruct_path(current_node)
             
             # Mark as visited
-            self.closed_set.add(current_key)
+            self._closed_set.add(current_key)
             
             # Expand using motion primitives
-            for next_state, cost in self._expand_node(current_node.state, self.world_bounds):
+            for next_state, cost in self._expand_node(current_node.state, self._world_bounds):                
+                # Check for collisions
+                if self.obstacle_checker.is_collision(next_state) or not self.obstacle_checker.is_path_clear(current_node.state, next_state):
+                    continue
+                
                 next_key = self._discretize_state(next_state)
                 
-                if next_key in self.closed_set:
-                    continue
-                
-                # Check for collisions
-                if self.obstacle_checker.is_collision(next_state):
-                    continue
-                
-                if not self.obstacle_checker.is_path_clear(current_node.state, next_state):
+                if next_key in self._closed_set:
                     continue
                 
                 g_cost = current_node.g_cost + cost
                 
                 # Skip if we've found a better path to this state
-                if next_key in self.g_values and g_cost >= self.g_values[next_key]:
+                if next_key in self._g_values and g_cost >= self._g_values[next_key]:
                     continue
                 
                 h_cost = self._heuristic(next_state, goal)
@@ -169,8 +166,8 @@ class HybridAStarPlanner(Planner):
                     parent=current_node,
                 )
                 
-                self.g_values[next_key] = g_cost
-                heapq.heappush(self.open_set, next_node)
+                self._g_values[next_key] = g_cost
+                heapq.heappush(self._open_set, next_node)
         
         print(f"No path found after {iterations} iterations")
         return None
@@ -181,7 +178,7 @@ class HybridAStarPlanner(Planner):
         (x_min, x_max), (y_min, y_max) = bounds
         successors = []
         
-        for dx, dy, dtheta in self.motion_primitives:
+        for dx, dy, dtheta in self._motion_primitives:
             new_x = x + dx
             new_y = y + dy
             new_theta = self._normalize_angle(theta + dtheta)
@@ -202,18 +199,18 @@ class HybridAStarPlanner(Planner):
     def _discretize_state(self, state: State) -> Tuple[int, int, int]:
         """Convert continuous state to discrete grid key for closed set."""
         x, y, theta = state
-        grid_x = round(x / self.grid_resolution)
-        grid_y = round(y / self.grid_resolution)
-        angle_bin = round(theta / self.angle_step) % self.angle_bins
+        grid_x = round(x / self._grid_resolution)
+        grid_y = round(y / self._grid_resolution)
+        angle_bin = round(theta / self._angle_step) % self._angle_bins
         return (grid_x, grid_y, angle_bin)
     
-    def _heuristic(self, state1: State, state2: State) -> float:
+    def _heuristic(self, state1: State, goal: State) -> float:
         """
         Heuristic function: Euclidean distance in (x, y).
         For holonomic systems, this is admissible since any (x, y) is reachable.
         """
         x1, y1, _ = state1
-        x2, y2, _ = state2
+        x2, y2, _ = goal
         return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     
     def _states_close(self, state1: State, state2: State, pos_tol: float = 0.5, angle_tol: Optional[float] = None) -> bool:
@@ -224,7 +221,7 @@ class HybridAStarPlanner(Planner):
         pos_distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
         
         if angle_tol is None:
-            angle_tol = self.angle_step
+            angle_tol = self._angle_step
         
         angle_distance = abs(self._normalize_angle(theta2 - theta1))
         angle_distance = min(angle_distance, 2 * math.pi - angle_distance)
