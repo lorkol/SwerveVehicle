@@ -17,6 +17,10 @@ class Obstacle:
         '''The center of the circle if the shape is circle.'''
         self.radius: Optional[float] = radius
         '''The radius of the circle if the shape is circle.'''
+        if self.shape == ConvexShape.Polygon and not self.points:
+            raise ValueError("Polygon shape must have points defined.")
+        if self.shape == ConvexShape.Circle and (self.center is None or self.radius is None):
+            raise ValueError("Circle shape must have center and radius defined.")
         
 def load_obstacles(obs_list: List[Dict[str, Union[str, List[Point2D], float]]]) -> List[Obstacle]:
     """Loads obstacles from a list of dictionaries\n

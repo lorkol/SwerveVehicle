@@ -1,3 +1,10 @@
 {
     
+    "Obstacle Detection":
+    {
+        "SimpleObstacleDetector":
+        {
+            "path_num_samples": 20
+        }
+    }
 }
