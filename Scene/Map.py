@@ -1,11 +1,9 @@
-from typing import List
-import JsonManager
+from typing import Any, List, Dict
 from ObstacleDetection.Obstacle import Obstacle, load_obstacles
 
 class Map:
-    def __init__(self, map_file: str) -> None:
-        self._map_json = JsonManager.JsonManager(map_file)
-        self.length: float = self._map_json.read_param_value("Dimensions/Length")
-        self.width: float = self._map_json.read_param_value("Dimensions/Width")
-        self.friction_coefficient: float = self._map_json.read_param_value("FrictionCoefficient")
-        self.obstacles: List[Obstacle] = load_obstacles(self._map_json.read_param_value("Obstacles"))
+    def __init__(self, map_object: Dict[str, Any]) -> None:
+        self.length: float = map_object["Dimensions"]["Length"]
+        self.width: float = map_object["Dimensions"]["Width"]
+        self.friction_coefficient: float = map_object["FrictionCoefficient"]
+        self.obstacles: List[Obstacle] = load_obstacles(map_object["Obstacles"])

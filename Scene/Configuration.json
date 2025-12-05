@@ -1,0 +1,55 @@
+{
+    "Map":
+    {
+    "Dimensions": {
+        "Length": 100.0,
+        "Width": 50.0
+    },
+    "FrictionCoefficient": 0.8,
+    "Obstacles": [
+            {
+            "Shape": "Circle",
+            "Center": [25.0, 25.0],
+            "Radius": 5.0
+            },
+            {
+            "Shape": "Circle",
+            "Center": [75.0, 25.0],
+            "Radius": 3.0
+            },
+            {
+            "Shape": "Polygon",
+            "Points": [
+                [10.0, 10.0],
+                [20.0, 10.0],
+                [20.0, 20.0],
+                [10.0, 20.0]
+            ]
+            },
+            {
+            "Shape": "Polygon",
+            "Points": [
+                [50.0, 30.0],
+                [60.0, 30.0],
+                [65.0, 45.0],
+                [50.0, 45.0]
+            ]
+            }
+        ] 
+    },
+    "Robot":
+    {
+        "Dimensions": {
+            "Length": 1.0,
+            "Width": 1.0
+        },
+        "Mass": 20.0,
+        "Inertia": 5.0,
+        "Max Wheel Rotation Speed": 10.0,
+        "Max Wheel Acceleration": 5.0,
+        "Max Wheel Torque": 15.0,
+        "Max Steering Speed": 30.0,
+        "Max Steering Acceleration": 20.0,
+        "Max Steering Torque": 10.0
+    }
+}
