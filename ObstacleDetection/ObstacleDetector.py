@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import math
 import numpy as np
 from typing import List
+from multiprocessing import Pool
 from ObstacleDetection.Obstacle import Obstacle
 from Scene.Robot import Robot
 from Types import ConvexShape, State, Point2D
@@ -24,12 +25,88 @@ class ObstacleChecker(ABC):
 
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
-    def __init__(self, robot: Robot, obstacles: List[Obstacle]) -> None:
+    def __init__(self, robot: Robot, obstacles: List[Obstacle], use_parallelization: bool = False) -> None:
         super().__init__()
         self._robot: Robot = robot
         self._obstacles: List[Obstacle] = obstacles
+        self._use_only_bounding_circles: bool = False
+        '''If true, only use bounding circle checks for collision detection (faster, less accurate).'''
+        self._use_parallelization: bool = use_parallelization and len(obstacles) > 5
+        
+        # Pre-compute bounding circles for obstacles (for quick rejection)
+        self._obstacle_bounds = self._compute_obstacle_bounds()
     
-    def _polygon_rectangle_collision(self, polygon_points: List[Point2D], robot_state: State, robot_length: float, robot_width: float) -> bool:
+    def _compute_obstacle_bounds(self) -> List[tuple]:
+        """
+        Pre-compute bounding circles for obstacles for quick rejection.
+        Returns list of (center, radius) for each obstacle.
+        """
+        bounds = []
+        for obs in self._obstacles:
+            if obs.shape == ConvexShape.Circle and obs.center and obs.radius:
+                # Circle: bounding circle is itself
+                bounds.append((obs.center, obs.radius))
+            elif obs.shape == ConvexShape.Polygon and obs.points:
+                # Polygon: compute bounding circle
+                points = np.array(obs.points)
+                center = np.mean(points, axis=0)
+                max_dist = np.max(np.linalg.norm(points - center, axis=1))
+                bounds.append((tuple(center), max_dist))
+            else:
+                bounds.append((None, 0))
+        return bounds
+    
+    def _quick_rejection_check(self, state: State, obstacle_idx: int) -> bool:
+        """
+        Quick bounding circle check before expensive collision detection.
+        Returns True if definitely NO collision, False if might collide (needs full check).
+        """
+        robot_x, robot_y, theta = state
+        center, radius = self._obstacle_bounds[obstacle_idx]
+        
+        if center is None:
+            return False
+        
+        # Robot bounding circle (approximation: diagonal/2)
+        robot_radius = math.sqrt(self._robot.length**2 + self._robot.width**2) / 2
+        
+        # Distance between centers
+        dist = math.sqrt((robot_x - center[0])**2 + (robot_y - center[1])**2)
+        
+        # If too far apart, no collision possible
+        return dist > (robot_radius + radius + 1.0)  # +1.0 safety margin
+    
+    def _check_obstacle_collision(self, obstacle_idx: int, state: State) -> bool:
+        """Check collision with a single obstacle (helper for parallelization)."""
+        obs = self._obstacles[obstacle_idx]
+        
+        # Quick rejection
+        if self._quick_rejection_check(state, obstacle_idx):
+            return False
+        if self._use_only_bounding_circles:
+            return True  # Assume collision if bounding circles overlap
+        
+        if obs.shape == ConvexShape.Circle:
+            if self._circle_rectangle_collision(
+                circle_center=obs.center,  # type: ignore
+                circle_radius=obs.radius,  # type: ignore
+                robot_state=state
+            ):
+                return True
+                
+        elif obs.shape == ConvexShape.Polygon:
+            if not obs.points or len(obs.points) < 3:
+                return False
+            
+            if self._polygon_rectangle_collision(
+                polygon_points=obs.points,
+                robot_state=state
+            ):
+                return True
+        
+        return False
+    
+    def _polygon_rectangle_collision(self, polygon_points: List[Point2D], robot_state: State) -> bool:
         """
         Check collision between a rotated rectangle (robot) and a polygon (obstacle)
         using Separating Axis Theorem (SAT).
@@ -37,8 +114,6 @@ class StaticObstacleChecker(ObstacleChecker):
         Args:
             polygon_points: List of (x, y) vertices of the polygon
             robot_state: (x, y, theta) position and orientation of robot
-            robot_length: length of robot
-            robot_width: width of robot
             
         Returns:
             True if collision detected, False otherwise
@@ -46,8 +121,8 @@ class StaticObstacleChecker(ObstacleChecker):
         robot_x, robot_y, robot_theta = robot_state
         
         # Get rectangle corners in world frame
-        half_length = robot_length / 2.0
-        half_width = robot_width / 2.0
+        half_length = self._robot.length / 2.0
+        half_width = self._robot.width / 2.0
         
         cos_theta = math.cos(robot_theta)
         sin_theta = math.sin(robot_theta)
@@ -116,7 +191,7 @@ class StaticObstacleChecker(ObstacleChecker):
         # No separating axis found
         return True
     
-    def _circle_rectangle_collision(self, circle_center: Point2D, circle_radius: float, robot_state: State, robot_length: float, robot_width: float) -> bool:
+    def _circle_rectangle_collision(self, circle_center: Point2D, circle_radius: float, robot_state: State) -> bool:
         """
         Check collision between a rotated rectangle (robot) and a circle (obstacle).
         
@@ -124,8 +199,6 @@ class StaticObstacleChecker(ObstacleChecker):
             circle_center: (x, y) position of circle
             circle_radius: radius of circle
             robot_state: (x, y, theta) position and orientation of robot
-            robot_length: length of robot (along x-axis when theta=0)
-            robot_width: width of robot (along y-axis when theta=0)
             
         Returns:
             True if collision detected, False otherwise
@@ -147,8 +220,8 @@ class StaticObstacleChecker(ObstacleChecker):
         
         # Step 2: Find closest point on rectangle to circle center (in robot's frame)
         # Rectangle extends from -length/2 to +length/2 in x, -width/2 to +width/2 in y
-        half_length = robot_length / 2.0
-        half_width = robot_width / 2.0
+        half_length = self._robot.length / 2.0
+        half_width = self._robot.width / 2.0
         
         # Clamp circle center to rectangle bounds
         closest_x = max(-half_length, min(local_x, half_length))
@@ -165,6 +238,7 @@ class StaticObstacleChecker(ObstacleChecker):
     def is_collision(self, state: State) -> bool:
         """
         Check if robot at given state collides with any obstacle.
+        Uses quick rejection checks and optional parallelization for efficiency.
         
         Args:
             state: Robot state (x, y, theta)
@@ -172,32 +246,20 @@ class StaticObstacleChecker(ObstacleChecker):
         Returns:
             True if collision detected, False otherwise
         """
-        for obs in self._obstacles:
-            if obs.shape == ConvexShape.Circle:
-                # Circle obstacle              
-                if self._circle_rectangle_collision(
-                    circle_center=obs.center, # type: ignore
-                    circle_radius=obs.radius, # type: ignore
-                    robot_state=state,
-                    robot_length=self._robot.length,
-                    robot_width=self._robot.width
-                ):
+        if self._use_parallelization and len(self._obstacles) >= 10:
+            # Parallel check using multiprocessing
+            with Pool(processes=4) as pool:
+                results = pool.starmap(
+                    self._check_obstacle_collision,
+                    [(i, state) for i in range(len(self._obstacles))]
+                )
+                return any(results)
+        else:
+            # Sequential check with early exit (faster for small obstacle count)
+            for i in range(len(self._obstacles)):
+                if self._check_obstacle_collision(i, state):
                     return True
-                    
-            elif obs.shape == ConvexShape.Polygon:
-                # Polygon obstacle using Separating Axis Theorem
-                if not obs.points or len(obs.points) < 3:
-                    continue
-                
-                if self._polygon_rectangle_collision(
-                    polygon_points=obs.points,
-                    robot_state=state,
-                    robot_length=self._robot.length,
-                    robot_width=self._robot.width
-                ):
-                    return True
-                
-        return False
+            return False
     
     def is_path_clear(self, state1: State, state2: State, num_samples: int = 20) -> bool:
         """
