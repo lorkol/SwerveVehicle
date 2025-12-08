@@ -1,7 +1,6 @@
 
 from abc import ABC, abstractmethod
 import math
-from re import T
 import numpy as np
 from typing import List, Tuple
 from multiprocessing import Pool
@@ -23,7 +22,13 @@ class ObstacleChecker(ABC):
         """Check if the path between two states is collision-free."""
         pass
 
-Robot_Geom = Tuple[List[Point2D], float, float, float, float, List[Tuple[float, float]]]
+Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]]
+'''Tuple containing pre-computed robot geometry for collision checks:
+- robot_corners: List of (x, y) robot corners in world frame
+- robot_x, robot_y, robot_theta: Robot position and orientation
+- axes: List of axes to test for SAT
+'''
+
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
     def __init__(self, robot: Robot, obstacles: List[Obstacle], use_parallelization: bool = False) -> None:
@@ -90,8 +95,6 @@ class StaticObstacleChecker(ObstacleChecker):
             wy = robot_y + sin_theta * lx + cos_theta * ly
             robot_corners.append((wx, wy))
         
-        collision_margin = 0.01
-        
         # Step 1: Get axes to test (normals of all edges)
         axes = []
         
@@ -106,7 +109,7 @@ class StaticObstacleChecker(ObstacleChecker):
             if length > 1e-6:
                 axes.append((normal[0] / length, normal[1] / length))
         
-        return robot_corners, robot_x, robot_y, robot_theta, collision_margin, axes
+        return robot_corners, robot_x, robot_y, robot_theta, axes
         
     def _point_to_segment_distance(self, point: Point2D, seg_start: Point2D, seg_end: Point2D) -> float:
         """
@@ -190,11 +193,13 @@ class StaticObstacleChecker(ObstacleChecker):
         """
         obs = self._obstacles[obstacle_idx]
         
-        # Quick rejection
+        # Quick rejection: if bounding circles don't overlap, no collision possible
         if self._quick_rejection_check(state, obstacle_idx):
             return False
+        
+        # If only using bounding circles for collision check, assume collision if we got here, otherwise would have rejected in quick check
         if self._use_only_bounding_circles:
-            return True  # Assume collision if bounding circles overlap
+            return True
         
         if obs.shape == ConvexShape.Circle:
             if self._circle_rectangle_collision(
@@ -226,7 +231,7 @@ class StaticObstacleChecker(ObstacleChecker):
         Returns:
             True if collision detected, False otherwise
         """
-        rect_corners_world, robot_x, robot_y, robot_theta, collision_margin, axes = robot_geom      
+        rect_corners_world, robot_x, robot_y, robot_theta, axes = robot_geom
         
         # Polygon edge normals
         for i in range(len(polygon_points)):
@@ -375,3 +380,98 @@ class StaticObstacleChecker(ObstacleChecker):
                 return False  # Path blocked
         
         return True  # Path is clear
+    
+    def _get_single_obstacle_distance(self, obstacle_idx: int, state: State, robot_geom: Robot_Geom) -> float:
+        """
+        Compute minimum distance from robot to a single obstacle.
+        
+        Args:
+            obstacle_idx: Index of obstacle
+            state: Robot state (x, y, theta)
+            robot_geom: Pre-computed robot geometry tuple
+            
+        Returns:
+            Minimum distance to obstacle (negative if collision)
+        """
+        obs = self._obstacles[obstacle_idx]
+        robot_x, robot_y, robot_theta = state
+        robot_corners, _, _, _, _ = robot_geom
+        
+        min_dist: float = float('inf')
+        
+        if obs.shape == ConvexShape.Circle:
+            # Distance from robot center to circle center minus radii
+            center_dist = math.sqrt((robot_x - obs.center[0])**2 + (robot_y - obs.center[1])**2)  # type: ignore
+            robot_radius = math.sqrt(self._robot.length**2 + self._robot.width**2) / 2
+            min_dist = center_dist - robot_radius - obs.radius  # type: ignore
+                
+        elif obs.shape == ConvexShape.Polygon and obs.points:
+            if len(obs.points) < 3:
+                return float('inf')
+            
+            # Calculate min distance from robot corners to polygon edges, and vice versa
+            # Robot corners to polygon edges
+            for corner in robot_corners:
+                for i in range(len(obs.points)):
+                    p1 = obs.points[i]
+                    p2 = obs.points[(i + 1) % len(obs.points)]
+                    dist = self._point_to_segment_distance(corner, p1, p2)
+                    min_dist = min(min_dist, dist)
+            
+            # Polygon vertices to robot edges
+            for vertex in obs.points:
+                for i in range(4):
+                    p1 = robot_corners[i]
+                    p2 = robot_corners[(i + 1) % 4]
+                    dist = self._point_to_segment_distance(vertex, p1, p2)
+                    min_dist = min(min_dist, dist)
+        
+        return min_dist
+    
+    def get_obstacle_distances(self, state: State) -> List[float]:
+        """
+        Get minimum distance from robot to each obstacle.
+        
+        Reuses the same collision detection geometry and algorithms. Can use fast
+        bounding circle approximation if use_only_bounding_circles is True.
+        
+        Args:
+            state: Robot state (x, y, theta)
+            
+        Returns:
+            List of minimum distances to each obstacle (same order as self._obstacles)
+            Negative distance means collision (penetration depth estimate)
+        """
+        robot_x, robot_y, robot_theta = state
+        
+        # Fast path: use only bounding circles (very fast, less accurate)
+        if self._use_only_bounding_circles:
+            distances = []
+            for obs in self._obstacles:
+                center, radius = self._obstacle_bounds[self._obstacles.index(obs)]
+                if center is None:
+                    distances.append(float('inf'))
+                else:
+                    # Distance between centers minus radii
+                    robot_radius = math.sqrt(self._robot.length**2 + self._robot.width**2) / 2
+                    center_dist = math.sqrt((robot_x - center[0])**2 + (robot_y - center[1])**2)
+                    distances.append(center_dist - robot_radius - radius)
+            return distances
+        
+        # Accurate path: use pre-computed geometry and precise collision checks
+        robot_geom: Robot_Geom = self._precompute_robot_geometry(state)
+        
+        if self._use_parallelization and len(self._obstacles) >= 10:
+            # Parallel computation using multiprocessing
+            with Pool(processes=4) as pool:
+                distances = pool.starmap(self._get_single_obstacle_distance, [(i, state, robot_geom) for i in range(len(self._obstacles))])
+                return distances
+        else:
+            # Sequential computation with early exit capability
+            distances = []
+            
+            for i in range(len(self._obstacles)):
+                dist = self._get_single_obstacle_distance(i, state, robot_geom)
+                distances.append(dist)
+            
+            return distances
