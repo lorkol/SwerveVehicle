@@ -113,9 +113,59 @@ class ActuatorController:
         
         return wheel_angles, wheel_torques
 
+    def get_accels(self, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
+        """
+        Forward dynamics: Given wheel angles and torques, compute resulting accelerations in Robot Frame.
+        
+        Args:
+            wheel_angles: Steering angles of the wheels [delta1, delta2, delta3, delta4]
+            wheel_torques: Torques applied at each wheel [tau1, tau2, tau3, tau4]
+            
+        Returns:
+            accels_R: Resulting accelerations [ax_R, ay_R, a_theta]
+        """
+        # Build B matrix
+        B_mat = self._build_B(wheel_angles)
+        
+        # Calculate forces at wheels
+        F_R = (B_mat / self.r).dot(wheel_torques)
+        
+        # Calculate accelerations in Robot Frame: a = M^{-1} * F
+        accels_R = np.linalg.solve(self._M_MATRIX, F_R)
+        
+        return accels_R
+
+    def get_accels_jacobian(self, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
+        """
+        Jacobian of accelerations with respect to wheel torques.
+        
+        Returns the partial derivatives of accelerations w.r.t. torques for MPC/SQP.
+        
+        Math:
+            a = M^{-1} * B * (tau / r)
+            ∂a/∂tau = M^{-1} * B / r
+        
+        Args:
+            wheel_angles: Steering angles of the wheels [delta1, delta2, delta3, delta4]
+            wheel_torques: Torques applied at each wheel [tau1, tau2, tau3, tau4] (used for consistency)
+            
+        Returns:
+            jacobian: (3, 4) matrix where jacobian[i, j] = ∂(accel_i)/∂(torque_j)
+            Rows: [∂a_x/∂tau, ∂a_y/∂tau, ∂a_theta/∂tau] (each is 1x4)
+            Cols: [∂/∂tau_1, ∂/∂tau_2, ∂/∂tau_3, ∂/∂tau_4]
+        """
+        # Build B matrix with current wheel angles
+        B_mat = self._build_B(wheel_angles)
+        
+        # Jacobian = M^{-1} * B / r
+        # This represents how accelerations change with each torque
+        M_inv = np.linalg.inv(self._M_MATRIX)
+        jacobian = (M_inv @ B_mat) / self.r
+        
+        return jacobian
 
 #Usage:
-    # Solve the ODE (Integrate the dynamics over time)
+    ## Solve the ODE (Integrate the dynamics over time)
     # solution = odeint(
     #     self.get_state_derivatives,
     #     X0, #np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # State Vector: [x, y, theta, vx_R, vy_R, v_theta]
