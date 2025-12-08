@@ -6,7 +6,7 @@ from typing import List, Tuple, Optional
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-from PathPlanning.HybridAStarPlanner import ObstacleChecker
+from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
 from Types import State
 
@@ -26,17 +26,17 @@ class AStarPlanner(Planner):
             max_iterations: Maximum number of nodes to expand
         """
         self.obstacle_checker: ObstacleChecker = obstacle_checker
-        self.grid_resolution: float = grid_resolution
+        self._grid_resolution: float = grid_resolution
         '''The discretization step for x and y.'''
-        self.angle_resolution: float = angle_resolution
+        self._angle_resolution: float = angle_resolution
         '''The discretization step for theta.'''
-        self.max_iterations: int = max_iterations
+        self._max_iterations: int = max_iterations
         '''The maximum number of nodes to expand.'''
-        self.closed_set: set[State] = set()
+        self._closed_set: set[State] = set()
         '''The set of visited states.'''
-        self.open_set: list[Node] = []
+        self._open_set: list[Node] = []
         '''The set of visited states.'''
-        self.world_bounds: Tuple[Tuple[float, float], Tuple[float, float]] = world_bounds
+        self._world_bounds: Tuple[Tuple[float, float], Tuple[float, float]] = world_bounds
         '''The world boundaries as ((x_min, x_max), (y_min, y_max)).'''
         
     def plan(self, start: State, goal: State) -> Optional[List[State]]:
@@ -61,38 +61,34 @@ class AStarPlanner(Planner):
             return None
         
         # Initialize
-        self.closed_set.clear()
-        self.open_set.clear()
+        self._closed_set.clear()
+        self._open_set.clear()
         
         start_node = Node(
             state=start,
             g_cost=0.0,
             h_cost=self._heuristic(start, goal),
         )
-        heapq.heappush(self.open_set, start_node)
+        heapq.heappush(self._open_set, start_node)
         
         iterations = 0
         
-        while self.open_set and iterations < self.max_iterations:
+        while self._open_set and iterations < self._max_iterations:
             iterations += 1
             
             # Get node with lowest f_cost
-            current_node = heapq.heappop(self.open_set)
+            current_node = heapq.heappop(self._open_set)
             
             # Check if goal reached
             if self._states_close(current_node.state, goal):
                 return self._reconstruct_path(current_node)
             
             # Mark as visited
-            self.closed_set.add(current_node.state)
+            self._closed_set.add(current_node.state)
             
             # Expand neighbors
-            for next_state, cost in self._get_neighbors(current_node.state, self.world_bounds):
-                if next_state in self.closed_set:
-                    continue
-                
-                # Check for collisions
-                if self.obstacle_checker.is_collision(next_state):
+            for next_state, cost in self._get_neighbors(current_node.state):
+                if next_state in self._closed_set:
                     continue
                 
                 if not self.obstacle_checker.is_path_clear(current_node.state, next_state):
@@ -108,28 +104,24 @@ class AStarPlanner(Planner):
                     parent=current_node,
                 )
                 
-                heapq.heappush(self.open_set, next_node)
+                heapq.heappush(self._open_set, next_node)
         
         print(f"No path found after {iterations} iterations")
         return None
     
-    def _get_neighbors(self, state: State, bounds: Tuple[Tuple[float, float], Tuple[float, float]]) -> List[Tuple[State, float]]:
+    def _get_neighbors(self, state: State) -> List[Tuple[State, float]]:
         """Generate neighboring states from current state."""
         x, y, theta = state
-        (x_min, x_max), (y_min, y_max) = bounds
+        (x_min, x_max), (y_min, y_max) = self._world_bounds
         neighbors = []
         
         # Generate 8-directional motion in (x, y) with angle variations
-        dx_options = [-self.grid_resolution, 0, self.grid_resolution]
-        dy_options = [-self.grid_resolution, 0, self.grid_resolution]
-        dtheta_options = [-self.angle_resolution, 0, self.angle_resolution]
+        dx_options = [-self._grid_resolution, 0, self._grid_resolution]
+        dy_options = [-self._grid_resolution, 0, self._grid_resolution]
+        dtheta_options = [-self._angle_resolution, 0, self._angle_resolution]
         
         for dx in dx_options:
             for dy in dy_options:
-                # Skip staying in place
-                if dx == 0 and dy == 0:
-                    continue
-                
                 for dtheta in dtheta_options:
                     new_x = x + dx
                     new_y = y + dy
@@ -138,12 +130,12 @@ class AStarPlanner(Planner):
                     # Keep theta in [-pi, pi]
                     new_theta = self._normalize_angle(new_theta)
                     
-                    # Check bounds
-                    if not (x_min <= new_x <= x_max and y_min <= new_y <= y_max):
-                        continue
-                    
                     new_state = (new_x, new_y, new_theta)
                     
+                    # Check bounds and collisions
+                    if not (x_min <= new_x <= x_max and y_min <= new_y <= y_max and not self.obstacle_checker.is_collision(new_state) and self.obstacle_checker.is_path_clear(state, new_state)):
+                        continue
+                                        
                     # Euclidean cost for motion
                     motion_cost = math.sqrt(dx**2 + dy**2)
                     
@@ -168,7 +160,7 @@ class AStarPlanner(Planner):
         pos_distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
         angle_distance = abs(self._normalize_angle(theta2 - theta1))
         
-        return pos_distance < tol and angle_distance < self.angle_resolution
+        return pos_distance < tol and angle_distance < self._angle_resolution
     
     def _normalize_angle(self, angle: float) -> float:
         """Normalize angle to [-pi, pi]."""

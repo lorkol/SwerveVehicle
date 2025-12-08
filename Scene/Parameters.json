@@ -1,3 +1,37 @@
 {
-    
+    "Path Planning":
+    {
+        "AStarPlanner":
+        {
+            "grid_resolution": 0.5,
+            "angle_resolution": 0.39269908169872414,
+            "max_iterations": 10000,
+            "pos_tolerance": 0.5
+        },
+        "HybridAStarPlanner":
+        {
+            "grid_resolution": 0.5,
+            "angle_bins": 16,
+            "max_iterations": 10000,
+            "pos_tolerance": 0.5
+        }
+    },
+    "Control":
+    {
+        "MPC":
+        {
+            
+        }
+    },
+    "Obstacle Detection":
+    {
+        "SimpleObstacleDetector":
+        {
+            "path_num_samples": 20,
+            "use_only_bounding_circles": false,
+            "collision_check_pool_size": 4,
+            "enable_parallel_collision_check": false,
+            "min_obstacles_for_parallel": 10
+        }
+    }
 }
