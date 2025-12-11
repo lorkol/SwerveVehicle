@@ -56,7 +56,8 @@ class ActuatorController:
             [math.sin(delta1), math.sin(delta2), math.sin(delta3), math.sin(delta4)],
             [tau_1, tau_2, tau_3, tau_4]
         ])
-                
+    
+    # TODO: Implement input current velocities in x and y, to make use of different wheel angles                
     def get_angles_and_torques(self, accels: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Analytical inverse kinematics: Find steering angles and wheel torques
@@ -134,6 +135,21 @@ class ActuatorController:
         accels_R = np.linalg.solve(self._M_MATRIX, F_R)
         
         return accels_R
+    
+    # def get_accels_in_world(self, state, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
+    #     robot_accels = self.get_accels(wheel_angles, wheel_torques)
+    #     x, y, theta, vx_R, vy_R, v_theta = state
+    #     R_mat = np.array([[math.cos(theta), -math.sin(theta)],
+    #                       [math.sin(theta), math.cos(theta)]])
+    #     V_R = np.array([vx_R, vy_R])
+    #     V_G = R_mat.dot(V_R)
+    #     vx_G, vy_G = V_G
+
+    #     # --- 3. Assemble dX/dt vector ---
+    #     dXdt = np.array([vx_G, vy_G, v_theta, robot_accels[0], robot_accels[1], robot_accels[2]])
+
+    #     return dXdt
+        
 
     def get_accels_jacobian(self, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
         """
