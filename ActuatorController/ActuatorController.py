@@ -8,21 +8,21 @@ class ActuatorController:
     def __init__(self, robot: Robot) -> None:
         """Initializes the actuator controller for a swerve drive robot."""
         #Dimensions and physical properties
-        self.m: float = robot.mass
-        self.I: float = robot.inertia
-        self._M_MATRIX: np.ndarray = np.diag([self.m, self.m, self.I])
-        self.r: float = robot.wheel_radius
-        self.l: float = robot.length
-        self.w: float = robot.width
+        self._m: float = robot.mass
+        self._I: float = robot.inertia
+        self._M_MATRIX: np.ndarray = np.diag([self._m, self._m, self._I])
+        self._r: float = robot.wheel_radius
+        self._l: float = robot.length
+        self._w: float = robot.width
         
         #Wheels/tires rotation/forces
-        self.max_wheel_rotation_speed: float = robot.max_wheel_rotation_speed
-        self.max_wheel_force: float = robot.max_wheel_torque / self.r
+        self._max_wheel_rotation_speed: float = robot.max_wheel_rotation_speed
+        self._max_wheel_force: float = robot.max_wheel_torque / self._r
         
         #Steering/delta/phis
         # TODO: Consider how to use the limitations on the steering directions
-        self.max_steering_speed: float = robot.max_steering_speed
-        self.max_steering_acceleration: float = robot.max_steering_acceleration # TODO: Check if I can use the torque instead
+        self._max_steering_speed: float = robot.max_steering_speed
+        self._max_steering_acceleration: float = robot.max_steering_acceleration # TODO: Check if I can use the torque instead
     
     def _create_A_Matrix(self, wheel_angles: np.ndarray) -> np.ndarray:
         """Creates the A matrix for the swerve robot based on wheel angles in radians."""
@@ -30,10 +30,10 @@ class ActuatorController:
         phi1, phi2, phi3, phi4 = wheel_angles
         
         A: NDArray[np.float64] = np.array([
-            [np.cos(phi1), np.sin(phi1), self.l * np.sin(phi1) + self.w * np.cos(phi1)],
-            [np.cos(phi2), np.sin(phi2), self.l * np.sin(phi2) - self.w * np.cos(phi2)],
-            [np.cos(phi3), np.sin(phi3), -self.l * np.sin(phi3) - self.w * np.cos(phi3)],
-            [np.cos(phi4), np.sin(phi4), -self.l * np.sin(phi4) + self.w * np.cos(phi4)]]
+            [np.cos(phi1), np.sin(phi1), self._l * np.sin(phi1) + self._w * np.cos(phi1)],
+            [np.cos(phi2), np.sin(phi2), self._l * np.sin(phi2) - self._w * np.cos(phi2)],
+            [np.cos(phi3), np.sin(phi3), -self._l * np.sin(phi3) - self._w * np.cos(phi3)],
+            [np.cos(phi4), np.sin(phi4), -self._l * np.sin(phi4) + self._w * np.cos(phi4)]]
         )
         
         return A
@@ -43,7 +43,7 @@ class ActuatorController:
         
         delta1, delta2, delta3, delta4 = wheel_angles
 
-        L_pos, W_pos = self.l, self.w
+        L_pos, W_pos = self._l, self._w
 
         # Row 3 (Torque) Calculation: xi*sin(delta) - yi*cos(delta)
         tau_1 = L_pos * math.sin(delta1) - (-W_pos) * math.cos(delta1)  # FR
@@ -107,10 +107,10 @@ class ActuatorController:
         # This will automatically make wheels on one side faster for rotation
         
         wheel_forces = np.linalg.lstsq(B_mat, F_R, rcond=None)[0]
-        wheel_torques = self.r * wheel_forces
-        if np.any(np.abs(wheel_torques) > self.max_wheel_force):
+        wheel_torques = self._r * wheel_forces
+        if np.any(np.abs(wheel_torques) > self._max_wheel_force):
             print("Warning: Wheel torques exceed maximum limits.")
-            wheel_torques = np.clip(wheel_torques, -self.max_wheel_force, self.max_wheel_force)
+            wheel_torques = np.clip(wheel_torques, -self._max_wheel_force, self._max_wheel_force)
         
         return wheel_angles, wheel_torques
 
@@ -129,7 +129,7 @@ class ActuatorController:
         B_mat = self._build_B(wheel_angles)
         
         # Calculate forces at wheels
-        F_R = (B_mat / self.r).dot(wheel_torques)
+        F_R = (B_mat / self._r).dot(wheel_torques)
         
         # Calculate accelerations in Robot Frame: a = M^{-1} * F
         accels_R = np.linalg.solve(self._M_MATRIX, F_R)
@@ -176,7 +176,7 @@ class ActuatorController:
         # Jacobian = M^{-1} * B / r
         # This represents how accelerations change with each torque
         M_inv = np.linalg.inv(self._M_MATRIX)
-        jacobian = (M_inv @ B_mat) / self.r
+        jacobian = (M_inv @ B_mat) / self._r
         
         return jacobian
 
@@ -200,7 +200,7 @@ class ActuatorController:
 
         # --- 1. Calculate accelerations in the Robot Frame ---
         B_mat = self._build_B(wheel_angles)
-        F_R = (B_mat / self.r).dot(wheel_torques)
+        F_R = (B_mat / self._r).dot(wheel_torques)
 
         # Calculate accelerations in the Robot Frame: a = M^{-1} * F
         accels_R = np.linalg.solve(self._M_MATRIX, F_R)

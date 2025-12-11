@@ -1,6 +1,7 @@
 from math import exp
-from typing import TypeAlias, Callable
+from typing import Callable
 import numpy as np
+from PathController.Controller import Controller
 from Types import State
 from PathController.Types import CONTROL_SIZE, STATE_SIZE, ControlSequence, Trajectory, State_Vector, Control_Vector
 from Robot_Sim import Robot_Sim
@@ -38,7 +39,7 @@ def propagate(robot_sim: Robot_Sim, collision_check_method: Callable[[State], bo
     return traj
 
 
-class MPPIController:
+class MPPIController(Controller):
     def __init__(self, desired_traj: Trajectory, robot_sim: Robot_Sim, collision_check_method: Callable[[State], bool]) -> None:       
         # TODO: Import from parameters file
         self.N = 500  # number of timesteps
@@ -54,7 +55,7 @@ class MPPIController:
         self.robot_sim: Robot_Sim = robot_sim
         self.collision_check_method: Callable[[State], bool] = collision_check_method
 
-    def l_cost(self, u_bar: ControlSequence, state_0: State_Vector = np.zeros(STATE_SIZE)) -> float:
+    def _l_cost(self, u_bar: ControlSequence, state_0: State_Vector = np.zeros(STATE_SIZE)) -> float:
         """Compute cost for a given control sequence."""
         try:
             traj: Trajectory = propagate(self.robot_sim, self.collision_check_method, state_0, u_bar)
@@ -66,7 +67,7 @@ class MPPIController:
             cost += float((err).T @ Q @ (err))
         return cost
 
-    def u_bar_update(self, u_bar: ControlSequence, state_0: State_Vector) -> ControlSequence:
+    def _u_bar_update(self, u_bar: ControlSequence, state_0: State_Vector) -> ControlSequence:
         """Update control sequence using MPPI."""
         exp_sum_nom = np.reshape(np.zeros(CONTROL_SIZE*self.N_Horizon), [CONTROL_SIZE, self.N_Horizon])
         exp_sum_denom: float = 0.
@@ -77,7 +78,7 @@ class MPPIController:
                 [CONTROL_SIZE, self.N_Horizon]
             )
             u_candidate = u_bar + self.myu * epsilon_k
-            cost_val = self.l_cost(u_candidate, state_0)
+            cost_val = self._l_cost(u_candidate, state_0)
             if cost_val == float('inf'):
                 i -= 1
                 continue  # Skip invalid trajectories while still guaranteeing having enough valid ones
@@ -92,5 +93,5 @@ class MPPIController:
 
     def get_command(self, state: State_Vector) -> Control_Vector:
         """Get the next control command."""
-        self.u_bar = self.u_bar_update(np.column_stack((self.u_bar[:, 1:], np.zeros((CONTROL_SIZE, 1)))), state)  # Stacking 0's into the last command
+        self.u_bar = self._u_bar_update(np.column_stack((self.u_bar[:, 1:], np.zeros((CONTROL_SIZE, 1)))), state)  # Stacking 0's into the last command
         return self.u_bar[:, 0]
