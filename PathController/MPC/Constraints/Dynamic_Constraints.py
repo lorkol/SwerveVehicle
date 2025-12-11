@@ -1,8 +1,7 @@
 import numpy as np
 
 from ActuatorController.ActuatorController import ActuatorController
-from PathController.MPC.Types import Control_Vector, State_Vector, STATE_SIZE, CONTROL_SIZE, FULL_SIZE, FullTraj
-
+from PathController.Types import Control_Vector, State_Vector, STATE_SIZE, CONTROL_SIZE, FULL_SIZE, FullTraj
 
 
 #x_(k+1) = x_k + v_x_k * dt

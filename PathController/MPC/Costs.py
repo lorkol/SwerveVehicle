@@ -1,7 +1,7 @@
 from queue import Full
 import numpy as np
 
-from PathController.MPC.Types import FULL_SIZE, STATE_SIZE, CONTROL_SIZE, FullTraj
+from PathController.Types import FULL_SIZE, STATE_SIZE, CONTROL_SIZE, FullTraj
 
 
 #TODO: Use the parameters from Parameters.json

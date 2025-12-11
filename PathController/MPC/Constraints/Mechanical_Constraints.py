@@ -1,7 +1,5 @@
-from msilib import Control
-
 import numpy as np
-from PathController.MPC.Types import Control_Vector, State_Vector
+from PathController.Types import Control_Vector, State_Vector
 
 
 # TODO: Use parameters from Config.json

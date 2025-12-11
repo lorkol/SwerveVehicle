@@ -22,6 +22,15 @@
         {
             "Horizon": 1000,
             "dt": 0.001
+        },
+        "MPPI":
+        {
+            "Horizon": 10,
+            "alpha": 1.0,
+            "sigma": 1.0,
+            "Lambda": 0.1,
+            "myu": 2.0,
+            "K": 50
         }
     },
     "Obstacle Detection":
