@@ -1,22 +1,8 @@
 import json
-from typing import Any
-import os
+from typing import Any, Dict
 
 
-class JsonManager:
-    def __init__(self, file_path: str) -> None:
-        if not os.path.exists(file_path):
-            with open(file_path, 'w') as file:
-                file.write("{}")
-        else:
-            raise FileNotFoundError(f"No File '{file_path}'")
-        self.file_path = file_path
-
-    def read_param_value(self, param_name: str) -> Any:
-        param_name.replace('"\\"', '/')
-        variable_path = param_name.split('/')
-        with open(self.file_path, 'r') as file:
-            res = json.load(file)
-            for category in variable_path:
-                res = res[category]
-        return res
+def load_json(file_path: str) -> Dict[str, Any]:
+    """Load JSON file."""
+    with open(file_path, 'r') as f:
+        return json.load(f)

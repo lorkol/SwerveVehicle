@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple, Optional
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import State
+from Types import State2D
 
 
 class HybridAStarPlanner(Planner):
@@ -84,7 +84,7 @@ class HybridAStarPlanner(Planner):
         
         return primitives
     
-    def plan(self, start: State, goal: State) -> Optional[List[State]]:
+    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
         """
         Plan a path from start to goal using Hybrid A*.
         
@@ -172,7 +172,7 @@ class HybridAStarPlanner(Planner):
         print(f"No path found after {iterations} iterations")
         return None
     
-    def _expand_node(self, state: State, bounds: Tuple[Tuple[float, float], Tuple[float, float]]) -> List[Tuple[State, float]]:
+    def _expand_node(self, state: State2D, bounds: Tuple[Tuple[float, float], Tuple[float, float]]) -> List[Tuple[State2D, float]]:
         """Expand node using motion primitives."""
         x, y, theta = state
         (x_min, x_max), (y_min, y_max) = bounds
@@ -196,7 +196,7 @@ class HybridAStarPlanner(Planner):
         
         return successors
     
-    def _discretize_state(self, state: State) -> Tuple[int, int, int]:
+    def _discretize_state(self, state: State2D) -> Tuple[int, int, int]:
         """Convert continuous state to discrete grid key for closed set."""
         x, y, theta = state
         grid_x = round(x / self._grid_resolution)
@@ -204,7 +204,7 @@ class HybridAStarPlanner(Planner):
         angle_bin = round(theta / self._angle_step) % self._angle_bins
         return (grid_x, grid_y, angle_bin)
     
-    def _heuristic(self, state1: State, goal: State) -> float:
+    def _heuristic(self, state1: State2D, goal: State2D) -> float:
         """
         Heuristic function: Euclidean distance in (x, y).
         For holonomic systems, this is admissible since any (x, y) is reachable.
@@ -213,7 +213,7 @@ class HybridAStarPlanner(Planner):
         x2, y2, _ = goal
         return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     
-    def _states_close(self, state1: State, state2: State, pos_tol: float = 0.5, angle_tol: Optional[float] = None) -> bool:
+    def _states_close(self, state1: State2D, state2: State2D, pos_tol: float = 0.5, angle_tol: Optional[float] = None) -> bool:
         """Check if two states are close enough to consider as goal reached."""
         x1, y1, theta1 = state1
         x2, y2, theta2 = state2
@@ -236,7 +236,7 @@ class HybridAStarPlanner(Planner):
             angle += 2 * math.pi
         return angle
     
-    def _reconstruct_path(self, node: Node) -> List[State]:
+    def _reconstruct_path(self, node: Node) -> List[State2D]:
         """Reconstruct path from start to current node."""
         path = []
         current = node
