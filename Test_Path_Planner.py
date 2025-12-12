@@ -20,6 +20,47 @@ from Scene.Robot import Robot
 from Types import State2D, ConvexShape
 
 
+def _get_rotated_robot_corners(center_x: float, center_y: float, length: float, width: float, theta: float) -> List[Tuple[float, float]]:
+    """
+    Calculate the corners of a rotated rectangle representing the robot.
+    
+    Args:
+        center_x, center_y: Center position of robot
+        length: Robot length (along x-axis when theta=0)
+        width: Robot width (along y-axis when theta=0)
+        theta: Rotation angle in radians
+        
+    Returns:
+        List of (x, y) corners in world frame
+    """
+    half_length = length / 2.0
+    half_width = width / 2.0
+    
+    # Corners in local frame (centered at origin)
+    corners_local = [
+        (-half_length, -half_width),
+        (half_length, -half_width),
+        (half_length, half_width),
+        (-half_length, half_width)
+    ]
+    
+    # Rotate and translate to world frame
+    cos_theta = math.cos(theta)
+    sin_theta = math.sin(theta)
+    
+    corners_world = []
+    for lx, ly in corners_local:
+        # Rotate
+        wx = cos_theta * lx - sin_theta * ly
+        wy = sin_theta * lx + cos_theta * ly
+        # Translate
+        wx += center_x
+        wy += center_y
+        corners_world.append((wx, wy))
+    
+    return corners_world
+
+
 def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[State2D], start: State2D, goal: State2D, world_bounds: Tuple[Tuple[float, float], Tuple[float, float]],
                           title: str = "Path Planning Result"):
     """Visualize the planned path with obstacles on the map."""
@@ -91,14 +132,23 @@ def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[Stat
             0.5 * math.cos(goal[2]), 0.5 * math.sin(goal[2]),
             head_width=0.3, head_length=0.2, fc='orange', ec='orange', zorder=10)
     
-    # Draw robot footprint at start position (optional)
-    robot_rect = patches.Rectangle(
-        (start[0] - robot.length/2, start[1] - robot.width/2),
-        robot.length, robot.width,
-        linewidth=1, edgecolor='green', facecolor='none', 
-        linestyle='--', alpha=0.5, zorder=4
+    # Draw robot footprint at start position
+    start_corners = _get_rotated_robot_corners(start[0], start[1], robot.length, robot.width, start[2])
+    start_robot_polygon = patches.Polygon(
+        start_corners,
+        linewidth=2, edgecolor='green', facecolor='green', 
+        alpha=0.2, zorder=4, label='Robot at Start'
     )
-    ax.add_patch(robot_rect)
+    ax.add_patch(start_robot_polygon)
+    
+    # Draw robot footprint at goal position
+    goal_corners = _get_rotated_robot_corners(goal[0], goal[1], robot.length, robot.width, goal[2])
+    goal_robot_polygon = patches.Polygon(
+        goal_corners,
+        linewidth=2, edgecolor='red', facecolor='red', 
+        alpha=0.2, zorder=4, label='Robot at Goal'
+    )
+    ax.add_patch(goal_robot_polygon)
     
     # Labels and legend
     ax.set_xlabel('X (meters)', fontsize=12)
