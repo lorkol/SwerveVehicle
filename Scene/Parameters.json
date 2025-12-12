@@ -25,6 +25,12 @@
             "search_radius": 2.0,
             "timeout": 2.0,
             "rewire_radius_factor": 20.0
+        },
+        "DStarPlanner":
+        {
+            "grid_resolution": 2.0,
+            "angle_resolution": 0.1963345408493621,
+            "pos_tolerance": 2.0
         }
     },
     "Control":

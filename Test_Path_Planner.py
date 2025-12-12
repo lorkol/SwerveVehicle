@@ -13,6 +13,7 @@ from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
 from PathPlanning.Planners import Planner, PlannerTypes, smooth_path
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
+from PathPlanning.DStarPlanner import DStarPlanner
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
@@ -164,10 +165,14 @@ def test_planner():
         grid_resolution: float = planner_params["grid_resolution"]
         angle_bins: int = planner_params["angle_bins"]      
         planner: Planner = HybridAStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_bins=angle_bins)
-    else:# if planner_type == PlannerTypes.RRTStarPlanner:
+    elif planner_type == PlannerTypes.RRTStarPlanner:
         rewire_radius_factor = planner_params["rewire_radius_factor"]
         rrt_timeout = planner_params["timeout"]
         planner: Planner = RRTStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, timeout=rrt_timeout, rewire_radius_factor=rewire_radius_factor)
+    else: #if planner_type == PlannerTypes.DStarPlanner:
+        grid_resolution: float = planner_params["grid_resolution"]
+        angle_resolution: float = planner_params["angle_resolution"]
+        planner: Planner = DStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_resolution=angle_resolution)
     
     # Test cases: (start, goal, description)
     test_cases = [
@@ -266,7 +271,7 @@ def test_collision_detection():
     
     # Test points
     test_points = [
-        ((1.0, 1.0, 0.0), "Free space (corner)"),
+        ((5.0, 5.0, 0.0), "Free space (corner)"),
         ((map_obj.length / 2, map_obj.width / 2, 0.0), "Center"),
         ((0.1, 0.1, 0.0), "Near boundary"),
     ]
@@ -286,3 +291,4 @@ if __name__ == "__main__":
         print(f"\n✗ Error during testing: {e}")
         import traceback
         traceback.print_exc()
+
