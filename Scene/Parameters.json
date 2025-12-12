@@ -7,7 +7,7 @@
         },
         "AStarPlanner":
         {
-            "grid_resolution": 0.5,
+            "grid_resolution": 1.0,
             "angle_resolution": 0.1963345408493621,
             "pos_tolerance": 0.5
         },
