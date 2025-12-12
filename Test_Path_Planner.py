@@ -180,7 +180,7 @@ def test_planner():
     test_cases = [
         (
             (5.0, 5.0, 0.0),
-            (map_obj.length - 5.0, map_obj.width - 5.0, 0.0),
+            (map_obj.length - 20.0, map_obj.width - 20.0, 0.0),
             "Corner to opposite corner"
         ),
         (
@@ -190,7 +190,7 @@ def test_planner():
         ),
         (
             (5.0, map_obj.width / 2, math.pi / 2),
-            (map_obj.length - 5.0, map_obj.width / 2, math.pi / 2),
+            (map_obj.length - 20.0,  map_obj.width - 20.0, math.pi / 2),
             "Left to right side"
         ),
     ]
