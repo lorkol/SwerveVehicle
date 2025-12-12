@@ -19,16 +19,8 @@ from Scene.Robot import Robot
 from Types import State2D
 
 
-def visualize_path_on_map(
-    map_obj: Map,
-    robot: Robot,
-    obstacles,
-    path: List[State2D],
-    start: State2D,
-    goal: State2D,
-    world_bounds: Tuple[Tuple[float, float], Tuple[float, float]],
-    title: str = "A* Path Planning Result"
-):
+def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[State2D], start: State2D, goal: State2D, world_bounds: Tuple[Tuple[float, float], Tuple[float, float]],
+                          title: str = "Path Planning Result"):
     """Visualize the planned path with obstacles on the map."""
     
     fig, ax = plt.subplots(figsize=(12, 10))
@@ -141,10 +133,7 @@ def test_planner():
     map_obj = Map(map_config)
     
     # Define world bounds from map dimensions
-    world_bounds = (
-        (0, map_obj.length),
-        (0, map_obj.width)
-    )
+    world_bounds = ((0, map_obj.length),(0, map_obj.width))
     
     print(f"\nWorld bounds: x=[0, {map_obj.length}], y=[0, {map_obj.width}]")
     print(f"Number of obstacles: {len(map_obj.obstacles)}")
@@ -158,38 +147,35 @@ def test_planner():
             print(f"  Obstacle {i}: Polygon with {len(obs.points)} vertices")
     
     # Create obstacle checker
-    obstacle_checker = StaticObstacleChecker(
-        robot=robot,
-        map_limits=world_bounds,
-        obstacles=map_obj.obstacles,
-        use_parallelization=False
-    )
+    obstacle_checker = StaticObstacleChecker(robot=robot, map_limits=world_bounds, obstacles=map_obj.obstacles, use_parallelization=False)
     
     # Create Path planner
-    planner_type_str = params.get("Path Planning", {}).get("Planner", {}).get("type", "AStarPlanner")
+    planner_params = params["Path Planning"]
+    planner_type_str = planner_params["Planner"]["type"]
     try:
         planner_type = PlannerTypes(planner_type_str)
     except (ValueError, KeyError):
         print(f"Warning: Unknown planner type '{planner_type_str}', using AStarPlanner")
         planner_type = PlannerTypes.AStarPlanner
+    planner_params = params["Path Planning"][planner_type.value]
     if planner_type == PlannerTypes.AStarPlanner:
-        grid_resolution: float = params["Path Planning"]["AStarPlanner"]["grid_resolution"]
-        angle_resolution: float = params["Path Planning"]["AStarPlanner"]["angle_resolution"]
+        grid_resolution: float = planner_params["grid_resolution"]
+        angle_resolution: float = planner_params["angle_resolution"]
         planner: Planner = AStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_resolution=angle_resolution)
     elif planner_type == PlannerTypes.HybridAStarPlanner:  
-        grid_resolution: float = params["Path Planning"]["HybridAStarPlanner"]["grid_resolution"]
-        angle_bins: int = params["Path Planning"]["HybridAStarPlanner"]["angle_bins"]      
+        grid_resolution: float = planner_params["grid_resolution"]
+        angle_bins: int = planner_params["angle_bins"]      
         planner: Planner = HybridAStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_bins=angle_bins)
     else:# if planner_type == PlannerTypes.RRTStarPlanner:
-        rewire_radius_factor = params["Path Planning"]["RRTStarPlanner"]["rewire_radius_factor"]
-        rrt_timeout = params["Path Planning"]["RRTStarPlanner"]["timeout"]
+        rewire_radius_factor = planner_params["rewire_radius_factor"]
+        rrt_timeout = planner_params["timeout"]
         planner: Planner = RRTStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, timeout=rrt_timeout, rewire_radius_factor=rewire_radius_factor)
     
     # Test cases: (start, goal, description)
     test_cases = [
         (
-            (1.0, 1.0, 0.0),
-            (map_obj.length - 1.0, map_obj.width - 1.0, 0.0),
+            (5.0, 5.0, 0.0),
+            (map_obj.length - 5.0, map_obj.width - 5.0, 0.0),
             "Corner to opposite corner"
         ),
         (
@@ -198,8 +184,8 @@ def test_planner():
             "Center to nearby position"
         ),
         (
-            (1.0, map_obj.width / 2, math.pi / 2),
-            (map_obj.length - 1.0, map_obj.width / 2, math.pi / 2),
+            (5.0, map_obj.width / 2, math.pi / 2),
+            (map_obj.length - 5.0, map_obj.width / 2, math.pi / 2),
             "Left to right side"
         ),
     ]

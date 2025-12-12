@@ -153,34 +153,57 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
         print(f"All smoothing strategies failed or had collisions, using original path with {len(path)} waypoints")
         smoothed = path
     
-    # Step 2: Downsample the path
-    downsampled = smoothed[::downsample_factor]
+    # Step 2: Downsample the path with progressive fallback
+    # Try downsampling factors from the requested one down to 1 (no downsampling)
+    downsampling_factors = [downsample_factor]
     
-    # Always include the goal
-    if downsampled[-1] != smoothed[-1]:
-        downsampled.append(smoothed[-1])
+    # Generate fallback factors: half, quarter, etc. down to 1
+    current_factor = downsample_factor
+    while current_factor > 1:
+        current_factor = max(1, current_factor // 2)
+        if current_factor not in downsampling_factors:
+            downsampling_factors.append(current_factor)
     
-    # Step 3: Final validation of downsampled path
-    has_collision = False
-    for i in range(len(downsampled) - 1):
-        state1 = downsampled[i]
-        state2 = downsampled[i + 1]
+    downsampled = None
+    successful_factor = None
+    
+    for factor in downsampling_factors:
+        downsampled = smoothed[::factor]
         
-        # Check if path segment is collision-free
-        if not obstacle_checker.is_path_clear(state1, state2):
-            print(f"Warning: Downsampled segment from {state1} to {state2} has collision!")
-            has_collision = True
+        # Always include the goal
+        if downsampled[-1] != smoothed[-1]:
+            downsampled.append(smoothed[-1])
         
-        # Check if new state is collision-free
-        if obstacle_checker.is_collision(state2):
-            print(f"Warning: Downsampled state {state2} is in collision!")
-            has_collision = True
+        # Validate downsampled path with this factor
+        has_collision = False
+        for i in range(len(downsampled) - 1):
+            state1 = downsampled[i]
+            state2 = downsampled[i + 1]
+            
+            # Check if path segment is collision-free
+            if not obstacle_checker.is_path_clear(state1, state2):
+                print(f"  Downsampling factor {factor}: segment collision detected")
+                has_collision = True
+                break
+            
+            # Check if new state is collision-free
+            if obstacle_checker.is_collision(state2):
+                print(f"  Downsampling factor {factor}: state collision detected")
+                has_collision = True
+                break
+        
+        if not has_collision:
+            print(f"  ✓ Downsampling successful with factor {factor}: {len(smoothed)} waypoints -> {len(downsampled)} waypoints")
+            successful_factor = factor
+            break
+        else:
+            print(f"  ✗ Downsampling failed with factor {factor}, trying lower factor...")
     
-    if has_collision:
-        print("Warning: Downsampled path has collisions, returning original path")
-        return path
+    if downsampled is None or successful_factor is None:
+        print(f"Warning: All downsampling factors failed, returning smoothed path with {len(smoothed)} waypoints (no downsampling)")
+        return smoothed
     
     if successful_strategy:
-        print(f"Final path: {len(smoothed)} waypoints smoothed -> {len(downsampled)} waypoints downsampled (factor {downsample_factor})")
+        print(f"Final path: {len(smoothed)} waypoints smoothed -> {len(downsampled)} waypoints downsampled (factor {successful_factor})")
     
     return downsampled
