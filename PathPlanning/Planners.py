@@ -13,6 +13,7 @@ class PlannerTypes(Enum):
     AStarPlanner = "AStarPlanner"
     HybridAStarPlanner = "HybridAStarPlanner"
     RRTStarPlanner = "RRTStarPlanner"
+    DStarPlanner = "DStarPlanner"
     
 class Planner(ABC):
     """Abstract base class for path planners."""
