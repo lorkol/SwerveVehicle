@@ -1,6 +1,6 @@
 """
-Test file for A* Path Planner
-Tests the A* algorithm with the robot's map and obstacle detector.
+Test file for Any Path Planner
+Tests the Planning algorithms with the robot's map and obstacle detector.
 """
 
 import json
@@ -16,7 +16,7 @@ from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
-from Types import State2D
+from Types import State2D, ConvexShape
 
 
 def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[State2D], start: State2D, goal: State2D, world_bounds: Tuple[Tuple[float, float], Tuple[float, float]],
@@ -40,7 +40,6 @@ def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[Stat
     ax.add_patch(boundary)
     
     # Draw obstacles
-    from Types import ConvexShape
     for i, obstacle in enumerate(obstacles):
         if obstacle.shape == ConvexShape.Circle:
             circle = patches.Circle(
@@ -139,7 +138,6 @@ def test_planner():
     print(f"Number of obstacles: {len(map_obj.obstacles)}")
     
     # Debug: Print obstacle details
-    from Types import ConvexShape
     for i, obs in enumerate(map_obj.obstacles):
         if obs.shape == ConvexShape.Circle:
             print(f"  Obstacle {i}: Circle at {obs.center}, radius={obs.radius}")
