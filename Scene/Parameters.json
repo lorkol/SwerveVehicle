@@ -1,4 +1,9 @@
 {
+    "Problem Statement":
+    {
+        "Start": [10.0, 10.0, 0.0],
+        "Goal": [90.0, 40.0, 0.0]
+    },
     "Path Planning":
     {
         "Planner":
@@ -7,7 +12,7 @@
         },
         "AStarPlanner":
         {
-            "grid_resolution": 0.5,
+            "grid_resolution": 1.0,
             "angle_resolution": 0.1963345408493621,
             "pos_tolerance": 0.5
         },
@@ -23,8 +28,8 @@
             "max_iterations": 10000,
             "goal_sample_rate": 0.1,
             "search_radius": 2.0,
-            "timeout": 2.0,
-            "rewire_radius_factor": 20.0
+            "timeout": 10.0,
+            "rewire_radius_factor": 30.0
         },
         "DStarPlanner":
         {

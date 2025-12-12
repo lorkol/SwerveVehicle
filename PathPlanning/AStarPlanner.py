@@ -14,7 +14,7 @@ class AStarPlanner(Planner):
     """A* path planner for a robot with (x, y, theta) configuration space."""
     
     def __init__(self, obstacle_checker: ObstacleChecker, world_bounds: Tuple[Tuple[float, float], Tuple[float, float]], 
-                 grid_resolution: float = 0.05, angle_resolution: float = math.pi / 16, max_iterations: int = None) -> None:
+                 grid_resolution: float = 1.0, angle_resolution: float = math.pi / 4, max_iterations: int = None) -> None:
         """
         Initialize the A* planner.
         
@@ -42,6 +42,8 @@ class AStarPlanner(Planner):
             max_iterations = x_cells * y_cells * angle_states
         
         self._max_iterations: int = max_iterations
+        print(f"    [A* Debug] Grid resolution: {grid_resolution}, Angle resolution: {math.degrees(angle_resolution):.1f}°")
+        print(f"    [A* Debug] Max iterations set to {self._max_iterations}")
         '''The maximum number of nodes to expand.'''
         self._closed_set: set[State2D] = set()
         '''The set of visited states.'''
@@ -62,6 +64,10 @@ class AStarPlanner(Planner):
         Returns:
             List of states representing the path, or None if no path found
         """
+        # Quantize start and goal to grid to ensure they're on the discretized space
+        start = self._quantize_state(start)
+        goal = self._quantize_state(goal)
+        
         # Check if start and goal are valid
         if self.obstacle_checker.is_collision(start):
             print(f"Start state {start} is in collision!")
@@ -135,6 +141,20 @@ class AStarPlanner(Planner):
         print(f"    [A* Debug] No path found after {iterations} iterations (max: {self._max_iterations})")
         return None
     
+    def _quantize_state(self, state: State2D) -> State2D:
+        """
+        Quantize state to grid to avoid floating point precision issues.
+        Ensures that the same logical grid cell always maps to the same state tuple.
+        """
+        x, y, theta = state
+        # Snap to nearest grid point
+        x_quant = round(x / self._grid_resolution) * self._grid_resolution
+        y_quant = round(y / self._grid_resolution) * self._grid_resolution
+        # Snap angle to nearest angle step
+        theta_quant = round(theta / self._angle_resolution) * self._angle_resolution
+        theta_quant = self._normalize_angle(theta_quant)
+        return (x_quant, y_quant, theta_quant)
+    
     def _get_neighbors(self, state: State2D) -> List[Tuple[State2D, float]]:
         """Generate neighboring states from current state."""
         x, y, theta = state
@@ -156,7 +176,8 @@ class AStarPlanner(Planner):
                     # Keep theta in [-pi, pi]
                     new_theta = self._normalize_angle(new_theta)
                     
-                    new_state = (new_x, new_y, new_theta)
+                    # Quantize to grid to prevent floating point precision issues
+                    new_state = self._quantize_state((new_x, new_y, new_theta))
                     
                     # Check bounds
                     if not (x_min <= new_x <= x_max and y_min <= new_y <= y_max):
@@ -186,15 +207,16 @@ class AStarPlanner(Planner):
         x2, y2, _ = state2
         return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     
-    def _states_close(self, state1: State2D, state2: State2D, tol: float = 0.5) -> bool:
-        """Check if two states are close enough to consider as goal reached."""
+    def _states_close(self, state1: State2D, state2: State2D) -> bool:
+        """Check if two states are close enough (same grid cell)."""
+        # Since both states are quantized, they should be exactly equal if on same cell
+        # Use small epsilon for floating point comparison
         x1, y1, theta1 = state1
         x2, y2, theta2 = state2
         
-        pos_distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        angle_distance = abs(self._normalize_angle(theta2 - theta1))
-        
-        return pos_distance < tol and angle_distance < self._angle_resolution
+        eps = 1e-6  # Very small tolerance for floating point
+        return (abs(x2 - x1) < eps and abs(y2 - y1) < eps and 
+                abs(self._normalize_angle(theta2 - theta1)) < eps)
     
     def _normalize_angle(self, angle: float) -> float:
         """Normalize angle to [-pi, pi]."""
