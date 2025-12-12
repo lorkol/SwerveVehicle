@@ -6,19 +6,19 @@ from typing import List, Tuple
 from multiprocessing import Pool
 from ObstacleDetection.Obstacle import Obstacle
 from Scene.Robot import Robot
-from Types import ConvexShape, State, Point2D
+from Types import ConvexShape, State2D, Point2D
 
 
 class ObstacleChecker(ABC):
     """Abstract base class for obstacle checking - implement with your obstacle detection."""
     
     @abstractmethod
-    def is_collision(self, state: State) -> bool:
+    def is_collision(self, state: State2D) -> bool:
         """Check if the given state (x, y, theta) collides with obstacles."""
         pass
     
     @abstractmethod
-    def is_path_clear(self, state1: State, state2: State) -> bool:
+    def is_path_clear(self, state1: State2D, state2: State2D) -> bool:
         """Check if the path between two states is collision-free."""
         pass
 
@@ -62,7 +62,7 @@ class StaticObstacleChecker(ObstacleChecker):
                 bounds.append((None, 0))
         return bounds
     
-    def _precompute_robot_geometry(self, state: State) -> Robot_Geom:
+    def _precompute_robot_geometry(self, state: State2D) -> Robot_Geom:
         """
         Pre-compute robot geometry once per collision check to avoid redundant calculations.
         
@@ -162,7 +162,7 @@ class StaticObstacleChecker(ObstacleChecker):
         dist_y = py - closest_y
         return math.sqrt(dist_x**2 + dist_y**2)
     
-    def _quick_rejection_check(self, state: State, obstacle_idx: int) -> bool:
+    def _quick_rejection_check(self, state: State2D, obstacle_idx: int) -> bool:
         """
         Quick bounding circle check before expensive collision detection.
         Returns True if definitely NO collision, False if might collide (needs full check).
@@ -182,7 +182,7 @@ class StaticObstacleChecker(ObstacleChecker):
         # If too far apart, no collision possible
         return dist > (robot_radius + radius + 1.0)  # +1.0 safety margin
     
-    def _check_obstacle_collision(self, obstacle_idx: int, state: State, robot_geom: Robot_Geom) -> bool:
+    def _check_obstacle_collision(self, obstacle_idx: int, state: State2D, robot_geom: Robot_Geom) -> bool:
         """
         Check collision with a single obstacle using pre-computed robot geometry.
         
@@ -268,7 +268,7 @@ class StaticObstacleChecker(ObstacleChecker):
         # No separating axis found
         return True
     
-    def _circle_rectangle_collision(self, circle_center: Point2D, circle_radius: float, robot_state: State) -> bool:
+    def _circle_rectangle_collision(self, circle_center: Point2D, circle_radius: float, robot_state: State2D) -> bool:
         """
         Check collision between a rotated rectangle (robot) and a circle (obstacle).
         
@@ -312,7 +312,7 @@ class StaticObstacleChecker(ObstacleChecker):
         # Step 4: Check collision
         return distance < circle_radius
         
-    def is_collision(self, state: State) -> bool:
+    def is_collision(self, state: State2D) -> bool:
         """
         Check if robot at given state collides with any obstacle.
         Pre-computes robot geometry once, then checks all obstacles.
@@ -341,7 +341,8 @@ class StaticObstacleChecker(ObstacleChecker):
                     return True
             return False
     
-    def is_path_clear(self, state1: State, state2: State, num_samples: int = 20) -> bool:
+    # TODO: use num_samples from parameters
+    def is_path_clear(self, state1: State2D, state2: State2D, num_samples: int = 20) -> bool:
         """
         Check if a straight-line path between two states is collision-free.
         
@@ -381,7 +382,7 @@ class StaticObstacleChecker(ObstacleChecker):
         
         return True  # Path is clear
     
-    def _get_single_obstacle_distance(self, obstacle_idx: int, state: State, robot_geom: Robot_Geom) -> float:
+    def _get_single_obstacle_distance(self, obstacle_idx: int, state: State2D, robot_geom: Robot_Geom) -> float:
         """
         Compute minimum distance from robot to a single obstacle.
         
@@ -428,7 +429,7 @@ class StaticObstacleChecker(ObstacleChecker):
         
         return min_dist
     
-    def get_obstacle_distances(self, state: State) -> List[float]:
+    def get_obstacle_distances(self, state: State2D) -> List[float]:
         """
         Get minimum distance from robot to each obstacle.
         
