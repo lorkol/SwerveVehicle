@@ -31,10 +31,12 @@ Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]
 
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
-    def __init__(self, robot: Robot, obstacles: List[Obstacle], use_parallelization: bool = False) -> None:
+    def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False) -> None:
         super().__init__()
         self._robot: Robot = robot
         self._obstacles: List[Obstacle] = obstacles
+        self._map_limits: Tuple[Tuple[float, float], Tuple[float, float]] = map_limits
+         # ((x_min, x_max), (y_min, y_max))
         self._use_only_bounding_circles: bool = False
         '''If true, only use bounding circle checks for collision detection (faster, less accurate).'''
         self._use_parallelization: bool = use_parallelization and len(obstacles) > 5
@@ -161,6 +163,31 @@ class StaticObstacleChecker(ObstacleChecker):
         dist_x = px - closest_x
         dist_y = py - closest_y
         return math.sqrt(dist_x**2 + dist_y**2)
+    
+    def _is_out_of_bounds(self, state: State2D) -> bool:
+        """
+        Check if any part of the robot is outside the map bounds.
+        
+        Args:
+            state: Robot state (x, y, theta)
+            
+        Returns:
+            True if robot is out of bounds, False otherwise
+        """
+        if self._map_limits is None:
+            return False
+        
+        (x_min, x_max), (y_min, y_max) = self._map_limits
+        
+        # Pre-compute robot geometry to get all corners
+        robot_corners, robot_x, robot_y, robot_theta, _ = self._precompute_robot_geometry(state)
+        
+        # Check if any corner is outside bounds
+        for corner_x, corner_y in robot_corners:
+            if corner_x < x_min or corner_x > x_max or corner_y < y_min or corner_y > y_max:
+                return True
+        
+        return False
     
     def _quick_rejection_check(self, state: State2D, obstacle_idx: int) -> bool:
         """
@@ -314,15 +341,19 @@ class StaticObstacleChecker(ObstacleChecker):
         
     def is_collision(self, state: State2D) -> bool:
         """
-        Check if robot at given state collides with any obstacle.
+        Check if robot at given state collides with any obstacle or is out of bounds.
         Pre-computes robot geometry once, then checks all obstacles.
         
         Args:
             state: Robot state (x, y, theta)
             
         Returns:
-            True if collision detected, False otherwise
+            True if collision detected or out of bounds, False otherwise
         """
+        # Check bounds first (fast early exit)
+        if self._is_out_of_bounds(state):
+            return True
+        
         # Pre-compute robot geometry once to avoid recalculating for each obstacle
         robot_geom = self._precompute_robot_geometry(state)
         
