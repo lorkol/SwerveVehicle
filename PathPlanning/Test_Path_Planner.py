@@ -3,6 +3,12 @@ Test file for Any Path Planner
 Tests the Planning algorithms with the robot's map and obstacle detector.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path so imports work from PathPlanning folder
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import json
 import math
 from typing import Tuple, List
