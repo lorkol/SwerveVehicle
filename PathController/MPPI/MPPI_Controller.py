@@ -2,7 +2,7 @@ from math import exp
 from typing import Callable
 import numpy as np
 from PathController.Controller import Controller
-from Types import State
+from Types import State2D
 from PathController.Types import CONTROL_SIZE, STATE_SIZE, ControlSequence, Trajectory, State_Vector, Control_Vector
 from Robot_Sim import Robot_Sim
 
@@ -24,7 +24,7 @@ P = np.block([
 ])
 
 
-def propagate(robot_sim: Robot_Sim, collision_check_method: Callable[[State], bool], state_0: State_Vector, control_sequence: ControlSequence) -> Trajectory:
+def _propagate(robot_sim: Robot_Sim, collision_check_method: Callable[[State2D], bool], state_0: State_Vector, control_sequence: ControlSequence) -> Trajectory:
     """Propagate the robot state over a control sequence."""
     N_Horizon = control_sequence.shape[1]
     traj: Trajectory = np.zeros((STATE_SIZE, N_Horizon))
@@ -40,58 +40,58 @@ def propagate(robot_sim: Robot_Sim, collision_check_method: Callable[[State], bo
 
 
 class MPPIController(Controller):
-    def __init__(self, desired_traj: Trajectory, robot_sim: Robot_Sim, collision_check_method: Callable[[State], bool]) -> None:       
+    def __init__(self, desired_traj: Trajectory, robot_sim: Robot_Sim, collision_check_method: Callable[[State2D], bool]) -> None:       
         # TODO: Import from parameters file
-        self.N = 500  # number of timesteps
-        self.N_Horizon = 10
-        self.alpha: float = 1.
-        self.sigma: float = 1.
-        self.Lambda: float = 0.1
-        self.myu: float = 2.
-        self.K: int = 50
-        self.desired_traj: Trajectory = desired_traj
-        self.u_bar: ControlSequence = np.reshape(np.random.multivariate_normal(np.zeros(CONTROL_SIZE*self.N_Horizon), np.eye(CONTROL_SIZE*self.N_Horizon)),
-                                                 [CONTROL_SIZE, self.N_Horizon])
-        self.robot_sim: Robot_Sim = robot_sim
-        self.collision_check_method: Callable[[State], bool] = collision_check_method
+        self._N = 500  # number of timesteps
+        self._N_Horizon = 10
+        self._alpha: float = 1.
+        self._sigma: float = 1.
+        self._Lambda: float = 0.1
+        self._myu: float = 2.
+        self._K: int = 50
+        self._desired_traj: Trajectory = desired_traj
+        self._u_bar: ControlSequence = np.reshape(np.random.multivariate_normal(np.zeros(CONTROL_SIZE*self._N_Horizon), np.eye(CONTROL_SIZE*self._N_Horizon)),
+                                                 [CONTROL_SIZE, self._N_Horizon])
+        self._robot_sim: Robot_Sim = robot_sim
+        self._collision_check_method: Callable[[State2D], bool] = collision_check_method
 
     def _l_cost(self, u_bar: ControlSequence, state_0: State_Vector = np.zeros(STATE_SIZE)) -> float:
         """Compute cost for a given control sequence."""
         try:
-            traj: Trajectory = propagate(self.robot_sim, self.collision_check_method, state_0, u_bar)
+            traj: Trajectory = _propagate(self._robot_sim, self._collision_check_method, state_0, u_bar)
         except Exception as e:
             return float('inf')  # High cost for invalid trajectories (e.g., collisions)
         cost: float = 0.
-        for i in range(self.N_Horizon):
-            err = self.desired_traj[:, i] - traj[:, i]
+        for i in range(self._N_Horizon):
+            err = self._desired_traj[:, i] - traj[:, i]
             cost += float((err).T @ Q @ (err))
         return cost
 
     def _u_bar_update(self, u_bar: ControlSequence, state_0: State_Vector) -> ControlSequence:
         """Update control sequence using MPPI."""
-        exp_sum_nom = np.reshape(np.zeros(CONTROL_SIZE*self.N_Horizon), [CONTROL_SIZE, self.N_Horizon])
+        exp_sum_nom: ControlSequence = np.reshape(np.zeros(CONTROL_SIZE*self._N_Horizon), [CONTROL_SIZE, self._N_Horizon])
         exp_sum_denom: float = 0.
         # TODO: Find a way to incorporate a timeout if no random sample is found within the timeout, reduce the horizon the algoritm is running on for the iteration. for very narrow passages
-        for i in range(self.K):
+        for i in range(self._K): # TODO: Consider parallelizing this loop in GPU in the future for speedup
             epsilon_k = np.reshape(
-                np.random.multivariate_normal(np.zeros(CONTROL_SIZE*self.N_Horizon), np.eye(CONTROL_SIZE*self.N_Horizon)), 
-                [CONTROL_SIZE, self.N_Horizon]
+                np.random.multivariate_normal(np.zeros(CONTROL_SIZE*self._N_Horizon), np.eye(CONTROL_SIZE*self._N_Horizon)), 
+                [CONTROL_SIZE, self._N_Horizon]
             )
-            u_candidate = u_bar + self.myu * epsilon_k
-            cost_val = self._l_cost(u_candidate, state_0)
+            u_candidate = u_bar + self._myu * epsilon_k
+            cost_val: float = self._l_cost(u_candidate, state_0)
             if cost_val == float('inf'):
                 i -= 1
                 continue  # Skip invalid trajectories while still guaranteeing having enough valid ones
-            weight = exp(-(1/self.Lambda) * cost_val) / self.sigma
+            weight = exp(-(1/self._Lambda) * cost_val) / self._sigma
             exp_sum_nom += weight * epsilon_k
-            exp_sum_denom += exp(-(1/self.Lambda) * cost_val)
+            exp_sum_denom += exp(-(1/self._Lambda) * cost_val)
         
         if exp_sum_denom == 0:
             return u_bar
         
-        return u_bar - self.alpha * (-self.Lambda * exp_sum_nom) / (self.myu * exp_sum_denom)
+        return u_bar - self._alpha * (-self._Lambda * exp_sum_nom) / (self._myu * exp_sum_denom)
 
     def get_command(self, state: State_Vector) -> Control_Vector:
         """Get the next control command."""
-        self.u_bar = self._u_bar_update(np.column_stack((self.u_bar[:, 1:], np.zeros((CONTROL_SIZE, 1)))), state)  # Stacking 0's into the last command
-        return self.u_bar[:, 0]
+        self._u_bar = self._u_bar_update(np.column_stack((self._u_bar[:, 1:], np.zeros((CONTROL_SIZE, 1)))), state)  # Stacking 0's into the last command
+        return self._u_bar[:, 0]

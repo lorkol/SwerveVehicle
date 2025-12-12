@@ -5,7 +5,7 @@ from typing import Tuple, TypeAlias
 
 Point2D: TypeAlias = Tuple[float, float]
 
-State: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
+State2D: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
 '''Represents (x, y, theta) the state of the vehicle in 2D space with orientation.'''
 
 class ConvexShape(Enum):
