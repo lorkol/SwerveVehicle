@@ -47,11 +47,12 @@
         },
         "MPPI":
         {
-            "Horizon": 10,
+            "N_Horizon": 10,
+            "dt": 0.1,
             "alpha": 1.0,
             "sigma": 1.0,
-            "Lambda": 0.1,
-            "myu": 2.0,
+            "Lambda": 2.0,
+            "myu": 10.0,
             "K": 50
         }
     },
