@@ -1,6 +1,7 @@
 """
 Test file for Any Path Planner
 Tests the Planning algorithms with the robot's map and obstacle detector.
+Tests Controllers as well
 """
 
 import sys
