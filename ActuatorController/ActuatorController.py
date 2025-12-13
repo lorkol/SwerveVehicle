@@ -136,20 +136,35 @@ class ActuatorController:
         
         return accels_R
     
-    # def get_accels_in_world(self, state, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
-    #     robot_accels = self.get_accels(wheel_angles, wheel_torques)
-    #     x, y, theta, vx_R, vy_R, v_theta = state
-    #     R_mat = np.array([[math.cos(theta), -math.sin(theta)],
-    #                       [math.sin(theta), math.cos(theta)]])
-    #     V_R = np.array([vx_R, vy_R])
-    #     V_G = R_mat.dot(V_R)
-    #     vx_G, vy_G = V_G
-
-    #     # --- 3. Assemble dX/dt vector ---
-    #     dXdt = np.array([vx_G, vy_G, v_theta, robot_accels[0], robot_accels[1], robot_accels[2]])
-
-    #     return dXdt
+    def get_accels_in_world(self, state: np.ndarray, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
+        """
+        Given the robot state, wheel angles, and wheel torques, compute the linear accelerations in the World Frame.
         
+        Converts robot frame accelerations to global frame using rotation matrix.
+        
+        Args:
+            state: Current state [x, y, theta, vx_R, vy_R, v_theta, d1, d2, d3, d4]
+            wheel_angles: Steering angles of the wheels [delta1, delta2, delta3, delta4]
+            wheel_torques: Torques applied at each wheel [tau1, tau2, tau3, tau4]
+            
+        Returns:
+            a_G: Accelerations in global frame [ax_G, ay_G, a_theta]
+        """
+        robot_accels = self.get_accels(wheel_angles, wheel_torques)
+        x, y, theta, vx_R, vy_R, v_theta = state[:6]
+        ax_R, ay_R, a_theta = robot_accels
+        
+        # Rotation matrix from robot frame to global frame
+        cos_theta = math.cos(theta)
+        sin_theta = math.sin(theta)
+        
+        # Convert linear accelerations: a_G = R * a_R
+        # This is the straightforward transformation without centripetal terms
+        ax_G = cos_theta * ax_R - sin_theta * ay_R
+        ay_G = sin_theta * ax_R + cos_theta * ay_R
+        
+        return np.array([ax_G, ay_G, a_theta])
+    
 
     def get_accels_jacobian(self, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
         """
