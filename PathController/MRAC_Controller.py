@@ -1,0 +1,105 @@
+import numpy as np
+import scipy.linalg
+from PathController.Controller import Controller
+from PathController.PathReference import ProjectedPathFollower
+from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
+from ActuatorController.ActuatorController import ActuatorController
+from Types import Point2D
+from typing import List
+
+
+class MRACController(Controller):
+    def __init__(self, robot_controller: ActuatorController, path_points: list[Point2D], 
+                 lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
+                 gamma: float = 0.5, kp: float = 8.0, kv: float = 4.0):
+        self.actuator = robot_controller
+        self.path_follower = ProjectedPathFollower(path_points)
+        
+        self._lookahead: float = lookahead  # meters
+        self._v_desired: float = v_desired  # m/s
+        self._dt: float = dt
+        self._alpha_min: float = alpha_min
+        self._alpha_max: float = alpha_max
+
+        # Reference Model State [x, y, th, vx, vy, vth]
+        self.xm: State_Vector = np.zeros(6) 
+        self.alpha_hat: np.ndarray = np.array([1.0, 1.0, 1.0]) 
+        
+        self._gamma: float = gamma   
+        self._kp: float = kp      
+        self._kv: float = kv
+        
+        self._initialized: bool = False
+
+    def get_command(self, state: State_Vector) -> Control_Vector:
+        # --- 1. State Conversion (Robot -> Global) ---
+        x, y, theta = state[0], state[1], state[2]
+        vx_R, vy_R, v_theta = state[3], state[4], state[5]
+        
+        c, s = np.cos(theta), np.sin(theta)
+        vx_G = c * vx_R - s * vy_R
+        vy_G = s * vx_R + c * vy_R
+        current_global = np.array([x, y, theta, vx_G, vy_G, v_theta])
+
+        # --- 2. Initialization Safety ---
+        # On the very first run, snap the internal model to the robot's actual position.
+        # Otherwise, the error will be huge (Robot at 10, Model at 0) and gains will explode.
+        if not self._initialized:
+            self.xm = current_global.copy()
+            self._initialized = True
+
+        # --- 3. Get Reference (The Rabbit) ---
+        # Get the moving target based on path geometry
+        ref = self.path_follower.get_reference_state(np.array([x, y]), self._lookahead, self._v_desired)
+
+        # --- 4. Calculate Tracking Error (Sync Times) ---
+        # Compare Robot(t) vs Model(t) BEFORE updating the model
+        tracking_err = current_global[:3] - self.xm[:3]
+
+        # --- 5. Update Adaptation (Based on Sync Error) ---
+        # If robot is behind model, increase alpha
+        self.alpha_hat += -self._gamma * tracking_err * self._dt
+        # Clamp to prevent instability (e.g. don't let it reverse control or grow infinite)
+        self.alpha_hat = np.clip(self.alpha_hat, self._alpha_min, self._alpha_max)
+
+        # --- 6. Compute Control Signal ---
+        # Calculate Nominal Control
+        real_pos_err = current_global[:3] - ref[:3]
+        real_pos_err[2] = (real_pos_err[2] + np.pi) % (2 * np.pi) - np.pi # Angle wrap
+        
+        u_nominal = -self._kp * real_pos_err - self._kv * (current_global[3:6] - ref[3:6])
+
+        # Apply Adaptive Gain
+        u_global = u_nominal * self.alpha_hat
+
+        # --- 7. Update Reference Model (Prepare for NEXT Step) ---
+        # Now move the model to t+1 so it is ready for the next loop.
+        # Calculate acceleration for the model based on where it is NOW.
+        pos_err_model = self.xm[:3] - ref[:3]
+        pos_err_model[2] = (pos_err_model[2] + np.pi) % (2 * np.pi) - np.pi
+        
+        acc_model = -self._kp * pos_err_model - self._kv * (self.xm[3:6] - ref[3:6])
+        
+        # Integrate Model
+        self.xm[3:6] += acc_model * self._dt
+        self.xm[:3] += self.xm[3:6] * self._dt
+
+        # --- 8. Frame Rotation (Global -> Robot) ---
+        # The ActuatorController needs accelerations in the ROBOT frame.
+        ax_G, ay_G, alpha_cmd = u_global
+        
+        # Rotation Matrix Transpose (Global to Robot)
+        ax_R = c * ax_G + s * ay_G
+        ay_R = -s * ax_G + c * ay_G
+        
+        u_robot = np.array([ax_R, ay_R, alpha_cmd])
+
+        # --- 9. Inverse Dynamics ---
+        deltas, torques = self.actuator.get_angles_and_torques(u_robot)
+
+        # --- 10. Pack Output ---
+        control_vec = np.zeros(CONTROL_SIZE)
+        control_vec[0:4] = torques
+        control_vec[4:8] = deltas
+        
+        return control_vec

@@ -44,6 +44,13 @@ class MPPIController(Controller):
         self._u_bar: ControlSequence = np.zeros((CONTROL_SIZE, self._N_Horizon))  # Initialize to zero, not random
         self._robot_sim: Robot_Sim = robot_sim
         self._collision_check_method: Callable[[State2D], bool] = collision_check_method
+        
+        # Goal position for early stopping (from trajectory end)
+        if desired_traj is not None and desired_traj.shape[1] > 0:
+            self._goal_pos = desired_traj[:2, -1]  # Extract (x, y) from last state
+        else:
+            self._goal_pos = None
+        self._goal_threshold = 0.5  # meters
 
     def _l_cost(self, u_bar: ControlSequence, state_0: State_Vector = np.zeros(STATE_SIZE)) -> float:
         """Compute cost for a given control sequence."""
@@ -98,5 +105,11 @@ class MPPIController(Controller):
     
     def get_command(self, state: State_Vector) -> Control_Vector:
         """Get the next control command."""
+        # --- 0. Check if Goal Reached ---
+        if self._goal_pos is not None:
+            dist_to_goal = np.linalg.norm(np.array([state[0], state[1]]) - self._goal_pos)
+            if dist_to_goal < self._goal_threshold:
+                return np.zeros(CONTROL_SIZE)
+        
         self._u_bar = self._u_bar_update(np.column_stack((self._u_bar[:, 1:], np.zeros((CONTROL_SIZE, 1)))), state)  # Stacking 0's into the last command
         return self._u_bar[:, 0]

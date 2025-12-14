@@ -28,7 +28,7 @@
             "max_iterations": 10000,
             "goal_sample_rate": 0.1,
             "search_radius": 2.0,
-            "timeout": 10.0,
+            "timeout": 4.0,
             "rewire_radius_factor": 30.0
         },
         "DStarPlanner":
@@ -40,6 +40,11 @@
     },
     "Control":
     {
+        "goal_threshold": 0.01,
+        "Controller":
+        {
+            "type": "MRAC"
+        },
         "MPC":
         {
             "Horizon": 1000,
@@ -54,6 +59,35 @@
             "Lambda": 2.0,
             "myu": 10.0,
             "K": 50
+        },
+        "MRAC":
+        {
+            "lookahead": 0.3,
+            "v_desired": 0.5,
+            "dt": 0.1,
+            "gamma": 0.1,
+            "kp": 10.0,
+            "kv": 2.0,
+            "alpha_min": 0.5,
+            "alpha_max": 1.5
+        },
+        "LQR":
+        {
+            "lookahead": 0.3,
+            "v_desired": 1.0,
+            "dt": 0.1,
+            "Q": [100.0, 100.0, 50.0, 5.0, 5.0, 2.0],
+            "R": [0.5, 0.5, 0.5]
+        },
+        "PID":
+        {
+            "Kp": [1.0, 1.0, 1.0],
+            "Ki": [0.0, 0.0, 0.0],
+            "Kd": [0.1, 0.1, 0.1]
+        },
+        "SMC":
+        {
+
         }
     },
     "Obstacle Detection":
@@ -65,6 +99,7 @@
             "collision_check_pool_size": 4,
             "enable_parallel_collision_check": false,
             "min_obstacles_for_parallel": 10
-        }
+        },
+        "collision_clearance": 0.5
     }
 }
