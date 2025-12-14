@@ -9,11 +9,11 @@ from typing import List
 
 
 class MRACController(Controller):
-    def __init__(self, robot_controller: ActuatorController, path_points: list[Point2D], 
+    def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower, 
                  lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
                  gamma: float = 0.5, kp: float = 8.0, kv: float = 4.0):
-        self.actuator = robot_controller
-        self.path_follower = ProjectedPathFollower(path_points)
+        self.actuator: ActuatorController = robot_controller
+        self.path_follower: ProjectedPathFollower = path_follower
         
         self._lookahead: float = lookahead  # meters
         self._v_desired: float = v_desired  # m/s
@@ -50,7 +50,7 @@ class MRACController(Controller):
 
         # --- 3. Get Reference (The Rabbit) ---
         # Get the moving target based on path geometry
-        ref = self.path_follower.get_reference_state(np.array([x, y]), self._lookahead, self._v_desired)
+        ref = self.path_follower.get_reference_state(np.array([x, y, theta]), self._lookahead, self._v_desired)
 
         # --- 4. Calculate Tracking Error (Sync Times) ---
         # Compare Robot(t) vs Model(t) BEFORE updating the model

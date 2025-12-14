@@ -1,12 +1,64 @@
 import numpy as np
 from Types import Point2D
 
+from ObstacleDetection.ObstacleDetector import ObstacleChecker
+
 class ProjectedPathFollower:
-    def __init__(self, path_points: list):  # List of points (can be 2D or 3D)
+    def __init__(self, path_points: list, obstacle_checker: ObstacleChecker = None, min_obstacle_dist: float = 0.5, max_obstacle_dist: float = 3.0, min_velocity_scale: float = 0.2):
+        """
+        Initialize the path follower.
+        
+        Args:
+            path_points: List of points [x, y] or [x, y, theta]
+            obstacle_checker: Optional obstacle checker for distance-based velocity scaling
+            min_obstacle_dist: Distance at which velocity is scaled to minimum (meters)
+            max_obstacle_dist: Distance beyond which velocity is not scaled (meters)
+            min_velocity_scale: Minimum velocity scale factor (0.0 to 1.0) when at min_obstacle_dist
+        """
         # Convert to numpy array for fast math
         # Expects points as [x, y] or [x, y, theta]
         self.path = np.array(path_points)
         self.last_idx: int = 0
+        
+        # Obstacle-aware velocity scaling
+        self.obstacle_checker = obstacle_checker
+        self.min_obstacle_dist = min_obstacle_dist
+        self.max_obstacle_dist = max_obstacle_dist
+        self.min_velocity_scale = min_velocity_scale
+    
+    def _get_velocity_scale(self, current_pos: np.ndarray) -> float:
+        """
+        Compute velocity scale factor based on distance to closest obstacle.
+        
+        Returns:
+            Scale factor between min_velocity_scale and 1.0
+            - Returns 1.0 if no obstacle checker or obstacles are far away
+            - Returns min_velocity_scale if closest obstacle is at min_obstacle_dist or closer
+            - Linearly interpolates between for intermediate distances
+        """
+        if self.obstacle_checker is None:
+            return 1.0
+                
+        state = (float(current_pos[0]), float(current_pos[1]), float(current_pos[2]))
+        
+        # Get distances to all obstacles
+        distances = self.obstacle_checker.get_obstacle_distances(state)
+        
+        if not distances:
+            return 1.0
+        
+        # Find minimum distance to any obstacle
+        min_distance = min(distances)
+        
+        # Clamp distance to valid range
+        if min_distance >= self.max_obstacle_dist:
+            return 1.0
+        elif min_distance <= self.min_obstacle_dist:
+            return self.min_velocity_scale
+        else:
+            # Linear interpolation between min and max velocity scale
+            t = (min_distance - self.min_obstacle_dist) / (self.max_obstacle_dist - self.min_obstacle_dist)
+            return self.min_velocity_scale + t * (1.0 - self.min_velocity_scale)
         
     def get_reference_state(self, current_pos: np.ndarray, lookahead_dist: float, v_desired: float) -> np.ndarray:
         """
@@ -17,7 +69,9 @@ class ProjectedPathFollower:
         # 1. Find Closest Point on Path Segment
         # Key: progress is MONOTONIC - only search forward from last_idx
         # This ensures we always move toward the goal, never backward
-        search_window = 10
+        # Use larger search window to ensure we can reach the goal
+        remaining_segments = len(self.path) - 1 - self.last_idx
+        search_window = max(10, remaining_segments)  # Search all remaining segments if needed
         start_search = self.last_idx  # Only search forward
         end_search = min(self.last_idx + search_window, len(self.path) - 1)
         
@@ -30,7 +84,7 @@ class ProjectedPathFollower:
             p2 = self.path[i+1]
             
             proj, t = self._project_on_segment(current_pos, p1, p2)
-            dist = np.linalg.norm(proj - current_pos)
+            dist = np.linalg.norm(proj - current_pos[:2])
             
             if dist < min_dist:
                 min_dist = dist
@@ -62,10 +116,20 @@ class ProjectedPathFollower:
         on_last_segment = best_idx >= len(self.path) - 2
         
         if on_last_segment:
-            # Return goal position with goal theta and ZERO velocity reference
-            # This lets position error fully drive the robot to goal
-            # The LQR will naturally slow down as it approaches due to the position error shrinking
-            return np.array([goal_point[0], goal_point[1], goal_theta, 0.0, 0.0, 0.0])
+            # Provide velocity reference toward goal, scaled by distance
+            # Velocity naturally approaches zero as robot approaches goal
+            if dist_to_goal > 1e-6:
+                dir_to_goal = goal_point - current_pos[:2]
+                dir_normalized = dir_to_goal / dist_to_goal
+                
+                velocity_scale = self._get_velocity_scale(current_pos)
+                # Velocity proportional to distance - naturally ramps down
+                approach_velocity = min(v_desired * velocity_scale, dist_to_goal)
+                
+                ref_vel = dir_normalized * approach_velocity
+                return np.array([goal_point[0], goal_point[1], goal_theta, ref_vel[0], ref_vel[1], 0.0])
+            else:
+                return np.array([goal_point[0], goal_point[1], goal_theta, 0.0, 0.0, 0.0])
         
         # Get Current Segment Tangent
         p1 = self.path[best_idx][:2]
@@ -108,14 +172,18 @@ class ProjectedPathFollower:
         else:
             kappa = 0.0
 
+        # Apply obstacle-aware velocity scaling
+        velocity_scale = self._get_velocity_scale(current_pos)
+        scaled_v_desired = v_desired * velocity_scale
+
         # Calculate Reference Angular Velocity
         # v_theta = curvature * linear_velocity
-        ref_v_theta = kappa * v_desired
+        ref_v_theta = kappa * scaled_v_desired
 
         # --- Standard Position/Velocity Calculation ---
         ref_pos = best_point + tangent1 * lookahead_dist
         ref_theta = np.arctan2(tangent1[1], tangent1[0])
-        ref_vel = tangent1 * v_desired
+        ref_vel = tangent1 * scaled_v_desired
 
         # Return updated state with v_theta
         return np.array([ref_pos[0], ref_pos[1], ref_theta, ref_vel[0], ref_vel[1], ref_v_theta ])

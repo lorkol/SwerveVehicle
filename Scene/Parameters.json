@@ -43,7 +43,7 @@
         "goal_threshold": 0.01,
         "Controller":
         {
-            "type": "MRAC"
+            "type": "LQR"
         },
         "MPC":
         {
@@ -63,7 +63,7 @@
         "MRAC":
         {
             "lookahead": 0.3,
-            "v_desired": 0.5,
+            "v_desired": 5.0,
             "dt": 0.1,
             "gamma": 0.1,
             "kp": 10.0,
@@ -73,10 +73,10 @@
         },
         "LQR":
         {
-            "lookahead": 0.3,
-            "v_desired": 1.0,
+            "lookahead": 0.1,
+            "v_desired": 2.0,
             "dt": 0.1,
-            "Q": [100.0, 100.0, 10.0, 5.0, 5.0, 2.0],
+            "Q": [200.0, 200.0, 10.0, 10.0, 10.0, 2.0],
             "R": [0.5, 0.5, 0.5]
         },
         "PID":

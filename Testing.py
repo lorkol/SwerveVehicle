@@ -28,6 +28,7 @@ from PathController.SMC_Controller import SMCController
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
 from ActuatorController.ActuatorController import ActuatorController
+from PathController.PathReference import ProjectedPathFollower
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
@@ -455,8 +456,12 @@ class ControllerTester:
         
         # Use actual controller velocity instead of max velocity
         v_desired = lqr_config.get("v_desired", 2.0)  # m/s
-        time_to_goal = path_length / v_desired  # seconds
-        horizon = int(time_to_goal / dt) + 50  # Add 50 extra steps as buffer
+        # Account for obstacle-aware velocity scaling - robot may move at min_velocity_scale (20%) near obstacles
+        # Use a conservative average velocity estimate (30% of desired) to ensure enough simulation time
+        min_velocity_scale = 0.2  # From PathReference default
+        avg_velocity_estimate = v_desired * 0.3  # Conservative: assume 30% average speed due to obstacles
+        time_to_goal = path_length / avg_velocity_estimate  # seconds
+        horizon = int(time_to_goal / dt) + 100  # Add 100 extra steps as buffer
         horizon = max(horizon, 500)  # At least 500 steps
         
         print(f"  Path length: {path_length:.2f}m, time to goal: {time_to_goal:.2f}s, horizon: {horizon}")
@@ -474,10 +479,22 @@ class ControllerTester:
         print(f"  Ref velocities (first 5): {ref_traj[3:6, :5]}")
         print(f"  Ref positions (last 5): {ref_traj[:2, -5:]}")
         print(f"  Ref velocities (last 5): {ref_traj[3:6, -5:]}")
+        
+        # Debug: Check path endpoints vs original goal
+        print(f"\n[DEBUG] Path endpoint check:")
+        print(f"  Original goal: ({self.goal[0]:.2f}, {self.goal[1]:.2f})")
+        print(f"  Path last point: ({path[-1][0]:.2f}, {path[-1][1]:.2f})")
+        print(f"  Trajectory final position: ({ref_traj[0, -1]:.2f}, {ref_traj[1, -1]:.2f})")
+        
         return ref_traj
     
     def simulate_controller(self, path, ref_traj: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """Simulate MPPI controller following reference trajectory with rolling horizon."""
+        # Debug: Check path endpoint
+        print(f"\n[DEBUG] PathFollower path check:")
+        print(f"  Original goal: ({self.goal[0]:.4f}, {self.goal[1]:.4f})")
+        print(f"  Path last point: ({path[-1][0]:.4f}, {path[-1][1]:.4f})")
+        
         # Create Controller
         controller_params = self.params["Control"]
         controller_type_str = controller_params["Controller"]["type"]
@@ -487,13 +504,17 @@ class ControllerTester:
             print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController")
             controller_type = ControllerTypes.LQR
         controller_params = controller_params[controller_type.value]
+        # Create robot simulator
+        dt: float = controller_params["dt"]
+        robot_sim = Robot_Sim(self.actuator_controller, self.robot, dt=dt)
+        path_follower = ProjectedPathFollower(path_points=path, obstacle_checker=self.obstacle_checker)
         if controller_type == ControllerTypes.LQR:
             lookahead: float = controller_params["lookahead"]
             v_desired: float = controller_params["v_desired"]
             dt: float = controller_params["dt"]
             Q = controller_params["Q"]
             R = controller_params["R"]
-            controller: Controller = LQRController(robot_controller= self.actuator_controller, path_points=path, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
+            controller: Controller = LQRController(robot_controller= self.actuator_controller, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
         elif controller_type == ControllerTypes.MRAC:
             lookahead: float = controller_params["lookahead"]
             v_desired: float = controller_params["v_desired"]
@@ -503,12 +524,10 @@ class ControllerTester:
             kv: float = controller_params["kv"]
             alpha_min: float = controller_params["alpha_min"]
             alpha_max: float = controller_params["alpha_max"]
-            controller: Controller = MRACController(robot_controller= self.actuator_controller, path_points=path, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+            controller: Controller = MRACController(robot_controller= self.actuator_controller, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
         else: #MPPI
-            raise NotImplementedError("No MPPI controller yet")
+            controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
         
-        # Create robot simulator
-        robot_sim = Robot_Sim(self.actuator_controller, self.robot, dt=dt)
         
         # Initial state
         initial_state = np.array([self.start[0], self.start[1], self.start[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -529,7 +548,7 @@ class ControllerTester:
         for step in range(ref_traj.shape[1] - 1):
             # Get reference state from path follower for debugging
             ref_state = controller.path_follower.get_reference_state(
-                np.array([current_state[0], current_state[1]]), 
+                np.array([current_state[0], current_state[1], current_state[2]]), 
                 controller._lookahead, 
                 controller._v_desired
             )

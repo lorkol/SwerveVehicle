@@ -8,9 +8,9 @@ from Types import Point2D
 from typing import List
 
 class LQRController(Controller):
-    def __init__(self, robot_controller: ActuatorController, path_points: list[Point2D], Q: List[float], R: List[float], lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1):
+    def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower, Q: List[float], R: List[float], lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1):
         self.actuator: ActuatorController = robot_controller
-        self.path_follower: ProjectedPathFollower = ProjectedPathFollower(path_points)
+        self.path_follower: ProjectedPathFollower = path_follower
         
         # Tuning Parameters # TODO: from parameters
         self._lookahead: float = lookahead  # meters
@@ -46,7 +46,7 @@ class LQRController(Controller):
         current_state_global: State_Vector = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
         # --- 2. Reference Generation ---
-        ref_state = self.path_follower.get_reference_state(np.array([x, y]), self._lookahead, self._v_desired)
+        ref_state = self.path_follower.get_reference_state(np.array([x, y, theta]), self._lookahead, self._v_desired)
 
         # --- 3. LQR Calculation (Global Frame) ---
         error = current_state_global - ref_state

@@ -65,12 +65,20 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
     if len(path) < 4:
         return path
     
+    # Store original start and goal before any filtering
+    original_start = path[0]
+    original_goal = path[-1]
+    
     # Remove duplicate/very close points first
     unique_points = []
     for point in path:
         if not unique_points or (abs(point[0] - unique_points[-1][0]) > 1e-6 or 
                                  abs(point[1] - unique_points[-1][1]) > 1e-6):
             unique_points.append(point)
+    
+    # Ensure original goal is always included
+    if unique_points[-1] != original_goal:
+        unique_points.append(original_goal)
     
     if len(unique_points) < 4:
         return path
@@ -120,10 +128,8 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
             for i in range(len(new_x)):
                 smoothed_path.append((new_x[i], new_y[i], new_theta[i])) # type: ignore
             
-            # IMPORTANT: Force start and goal to be exact original positions
+            # IMPORTANT: Force start and goal to be exact original positions (from input path)
             # B-spline with s > 0 approximates but doesn't pass through points exactly
-            original_start = unique_points[0]
-            original_goal = unique_points[-1]
             smoothed_path[0] = (original_start[0], original_start[1], smoothed_path[0][2])
             smoothed_path[-1] = (original_goal[0], original_goal[1], original_goal[2])
             
@@ -217,9 +223,10 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
     
     # CRITICAL: Guarantee the path ends at the exact original goal position
     # B-spline smoothing and downsampling can shift the endpoint slightly
-    original_start = path[0]
-    original_goal = path[-1]
+    # Use the original_start and original_goal saved at the beginning of this function
     result[0] = (original_start[0], original_start[1], result[0][2])
     result[-1] = (original_goal[0], original_goal[1], original_goal[2])
+    
+    print(f"  [DEBUG] smooth_path final check: goal=({original_goal[0]:.4f}, {original_goal[1]:.4f}), result[-1]=({result[-1][0]:.4f}, {result[-1][1]:.4f})")
     
     return result
