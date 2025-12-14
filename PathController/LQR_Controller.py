@@ -55,6 +55,21 @@ class LQRController(Controller):
         # u_global = [ax_G, ay_G, alpha_accel]
         u_global = -self.K @ error
 
+        # --- 3.5. Acceleration Limiting ---
+        # Clip accelerations to physically achievable limits
+        max_lin = self.actuator.max_linear_accel * 0.9  # 90% safety margin
+        max_ang = self.actuator.max_angular_accel * 0.9
+        
+        # Clip linear acceleration magnitude while preserving direction
+        lin_accel_mag = np.sqrt(u_global[0]**2 + u_global[1]**2)
+        if lin_accel_mag > max_lin:
+            scale = max_lin / lin_accel_mag
+            u_global[0] *= scale
+            u_global[1] *= scale
+        
+        # Clip angular acceleration
+        u_global[2] = np.clip(u_global[2], -max_ang, max_ang)
+
         # --- 4. Frame Rotation (Global -> Robot) ---
         # The ActuatorController needs accelerations in the ROBOT frame.
         # We rotate the linear acceleration vector by -theta.

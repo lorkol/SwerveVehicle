@@ -37,7 +37,17 @@ class ProjectedPathFollower:
                 best_point = proj
                 best_idx = i
 
-        self.last_idx = best_idx        
+        self.last_idx = best_idx
+        
+        # Check if we're at the end of the path
+        goal_point = self.path[-1][:2]
+        goal_theta = self.path[-1][2] if len(self.path[-1]) > 2 else 0.0
+        dist_to_goal = np.linalg.norm(current_pos[:2] - goal_point)
+        
+        # If close to goal or past the last segment, return goal state with zero velocity
+        if best_idx >= len(self.path) - 2 and dist_to_goal < lookahead_dist * 2:
+            # Return goal position with zero velocities (stop at goal)
+            return np.array([goal_point[0], goal_point[1], goal_theta, 0.0, 0.0, 0.0])
         
         # Get Current Segment Tangent
         p1 = self.path[best_idx][:2]

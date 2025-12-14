@@ -23,6 +23,27 @@ class ActuatorController:
         # TODO: Consider how to use the limitations on the steering directions
         self._max_steering_speed: float = robot.max_steering_speed
         self._max_steering_acceleration: float = robot.max_steering_acceleration # TODO: Check if I can use the torque instead
+        
+        # Compute maximum achievable accelerations from physical limits
+        # Max linear acceleration: all 4 wheels pushing in same direction
+        # a_max = (4 * F_max) / m = (4 * tau_max / r) / m
+        self._max_linear_accel: float = (4.0 * self._max_wheel_force) / self._m
+        
+        # Max angular acceleration: wheels creating pure torque
+        # For a rectangular chassis, max torque arm ≈ sqrt(l² + w²)
+        # alpha_max = (4 * F_max * arm) / I
+        arm_length = math.sqrt(self._l**2 + self._w**2)
+        self._max_angular_accel: float = (4.0 * self._max_wheel_force * arm_length) / self._I
+    
+    @property
+    def max_linear_accel(self) -> float:
+        """Maximum achievable linear acceleration (m/s²) based on wheel torque limits."""
+        return self._max_linear_accel
+    
+    @property
+    def max_angular_accel(self) -> float:
+        """Maximum achievable angular acceleration (rad/s²) based on wheel torque limits."""
+        return self._max_angular_accel
     
     def _create_A_Matrix(self, wheel_angles: np.ndarray) -> np.ndarray:
         """Creates the A matrix for the swerve robot based on wheel angles in radians."""
@@ -57,57 +78,96 @@ class ActuatorController:
             [tau_1, tau_2, tau_3, tau_4]
         ])
     
-    # TODO: Implement input current velocities in x and y, to make use of different wheel angles                
     def get_angles_and_torques(self, accels: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Analytical inverse kinematics: Find steering angles and wheel torques
         given desired accelerations in Robot Frame.
         
-        Strategy:
-        1. Point all wheels in direction of linear acceleration (for efficiency)
-        2. Distribute torques asymmetrically to create angular acceleration
-        
-        This naturally creates:
-        - Faster wheels on one side for rotation
-        - All wheels pointing same direction for linear motion
-        
-        Args:
-            accels_R: Desired accelerations [ax_R, ay_R, a_theta] in Robot Frame            
-            
-        Returns:
-            (wheel_angles, wheel_torques): Wheel angles and torques
+        Strategy: Vector Addition (Linear Force + Rotational Force)
         """
-        
-        # Step 1: Calculate desired forces in Robot Frame
+        # Step 1: Calculate desired Net Forces/Moments at CoM
         F_R = np.dot(self._M_MATRIX, accels)  # F = M * a
-        Fx_R, Fy_R, Tau_theta = F_R
+        Fx_target, Fy_target, Tau_target = F_R
         
-        # Step 2: Find the direction all wheels should point for linear motion
-        # This minimizes steering and is most efficient
-        F_linear = np.sqrt(Fx_R**2 + Fy_R**2)
+        # Step 2: Distribute forces to each wheel
+        # We assume equal load distribution (1/4 force per wheel)
+        # Wheel positions relative to center (Order: FR, FL, RL, RR based on your B matrix)
+        # Based on build_B: 
+        # 1: (+L, -W), 2: (+L, +W), 3: (-L, +W), 4: (-L, -W)
+        wheel_positions = np.array([
+            [self._l, -self._w], # 1
+            [self._l, self._w],  # 2
+            [-self._l, self._w], # 3
+            [-self._l, -self._w] # 4
+        ])
         
-        if F_linear < 1e-6:  # Nearly zero linear force - only rotation
-            delta_all = 0.0  # Arbitrary direction (no preferred direction)
-        else:
-            delta_all = np.arctan2(Fy_R, Fx_R)
+        # Radius squared for torque calculations (r^2 = x^2 + y^2)
+        # All wheels are equidistant in a rectangular chassis
+        r_sq = self._l**2 + self._w**2
         
-        # All wheels point the same direction
-        wheel_angles = np.array([delta_all, delta_all, delta_all, delta_all])
+        wheel_angles = []
+        wheel_torques = []
         
-        # Step 3: Build B matrix with this common angle
-        B_mat = self._build_B(wheel_angles)
-        
-        # Step 4: Solve for wheel torques to produce both linear AND angular acceleration
-        # We have 3 equations (Fx, Fy, Tau) and 4 unknowns (tau1, tau2, tau3, tau4)
-        # Use least squares to find the minimum-norm solution
-        # This will automatically make wheels on one side faster for rotation
-        
-        wheel_forces = np.linalg.lstsq(B_mat, F_R, rcond=None)[0]
-        wheel_torques = self._r * wheel_forces
+        for i in range(4):
+            rx, ry = wheel_positions[i]
+            
+            # A. Linear Component (Pure Translation)
+            # Distribute total force equally
+            fx_lin = Fx_target / 4.0
+            fy_lin = Fy_target / 4.0
+            
+            # B. Rotational Component (Pure Rotation)
+            # Torque = r x F. To create positive Tau (CCW), force must be tangent CCW.
+            # Tangent vector at (x,y) is (-y, x)
+            # Force magnitude F_rot = Tau / (4 * r)
+            # F_rot_vec = (Tau / 4r) * (-y/r, x/r) = (Tau / 4r^2) * (-y, x)
+            
+            common_factor = Tau_target / (4.0 * r_sq)
+            fx_rot = common_factor * (-ry)
+            fy_rot = common_factor * (rx)
+            
+            # C. Total Force Vector at Wheel
+            fx_total = fx_lin + fx_rot
+            fy_total = fy_lin + fy_rot
+            
+            # D. Convert to Steering Angle and Torque
+            # Steering angle is direction of force
+            delta = math.atan2(fy_total, fx_total)
+            
+            # Force magnitude
+            f_mag = math.sqrt(fx_total**2 + fy_total**2)
+            
+            # Direction Check:
+            # Wheels can spin forward or backward. Optimization:
+            # If the required angle is > 90 deg from current, flip force and angle?
+            # For this simple implementation, we assume infinite steering speed 
+            # and just output the exact vector direction.
+            
+            torque = f_mag * self._r
+            
+            # Optimization: If the force opposes the steering direction, flip torque?
+            # The atan2 above ensures force is always positive in the direction of delta.
+            # However, if we wanted to support reversing the wheel to minimize steering:
+            # (Not implemented here to keep it stable for now)
+            
+            wheel_angles.append(delta)
+            wheel_torques.append(torque)
+            
+        wheel_angles = np.array(wheel_angles)
+        wheel_torques = np.array(wheel_torques)
+
+        # Clip torques
         if np.any(np.abs(wheel_torques) > self._max_wheel_force):
-            print("Warning: Wheel torques exceed maximum limits.")
+            # Scale down to maintain direction, or just clip?
+            # Clipping allows some wheels to work while others saturate (better for control)
             wheel_torques = np.clip(wheel_torques, -self._max_wheel_force, self._max_wheel_force)
         
+        # Sanity Check: Verify forward dynamics recovers the input accelerations
+        recovered_accels = self.get_accels(wheel_angles, wheel_torques)
+        error = np.linalg.norm(recovered_accels - accels)
+        if error > 0.1:
+            print(f"WARNING: Dynamics mismatch! Input: {accels}, Recovered: {recovered_accels}, Error: {error:.4f}")
+            
         return wheel_angles, wheel_torques
 
     def get_accels(self, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:

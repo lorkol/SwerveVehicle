@@ -66,11 +66,27 @@ class MRACController(Controller):
         # Calculate Nominal Control
         real_pos_err = current_global[:3] - ref[:3]
         real_pos_err[2] = (real_pos_err[2] + np.pi) % (2 * np.pi) - np.pi # Angle wrap
+        # real_pos_err[2] *= 0.1  # Reduce yaw error influence
         
         u_nominal = -self._kp * real_pos_err - self._kv * (current_global[3:6] - ref[3:6])
 
         # Apply Adaptive Gain
         u_global = u_nominal * self.alpha_hat
+
+        # --- 6.5. Acceleration Limiting ---
+        # Clip accelerations to physically achievable limits
+        max_lin = self.actuator.max_linear_accel * 0.9  # 90% safety margin
+        max_ang = self.actuator.max_angular_accel * 0.9
+        
+        # Clip linear acceleration magnitude while preserving direction
+        lin_accel_mag = np.sqrt(u_global[0]**2 + u_global[1]**2)
+        if lin_accel_mag > max_lin:
+            scale = max_lin / lin_accel_mag
+            u_global[0] *= scale
+            u_global[1] *= scale
+        
+        # Clip angular acceleration
+        u_global[2] = np.clip(u_global[2], -max_ang, max_ang)
 
         # --- 7. Update Reference Model (Prepare for NEXT Step) ---
         # Now move the model to t+1 so it is ready for the next loop.

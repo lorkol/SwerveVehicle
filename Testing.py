@@ -517,6 +517,7 @@ class ControllerTester:
         # Simulation loop
         executed_states = [initial_state.copy()]
         executed_controls = []
+        reference_states = []  # Store reference states from PathFollower
         current_state = initial_state.copy()
         
         if self.DEBUG:
@@ -526,6 +527,14 @@ class ControllerTester:
         
         print(f"\nSimulating controller for {ref_traj.shape[1]} steps...")
         for step in range(ref_traj.shape[1] - 1):
+            # Get reference state from path follower for debugging
+            ref_state = controller.path_follower.get_reference_state(
+                np.array([current_state[0], current_state[1]]), 
+                controller._lookahead, 
+                controller._v_desired
+            )
+            reference_states.append(ref_state.copy())
+            
             # Compute control from controller
             control_input = controller.get_command(current_state)
             executed_controls.append(control_input.copy())
@@ -540,9 +549,10 @@ class ControllerTester:
         
         executed_states = np.array(executed_states)
         executed_controls = np.array(executed_controls)
+        reference_states = np.array(reference_states)
         
         print(f"[OK] Simulation completed: {len(executed_states)} states")
-        return executed_states, executed_controls
+        return executed_states, executed_controls, reference_states
     
     def calculate_cross_track_error(self, robot_history, path_points):
         """
@@ -641,23 +651,27 @@ class ControllerTester:
         
         return np.array(error_x), np.array(error_y), np.array(error_theta)
     
-    def visualize(self, path: List[State2D], executed_states: List[np.ndarray], ref_traj: np.ndarray):
+    def visualize(self, path: List[State2D], executed_states: List[np.ndarray], ref_traj: np.ndarray, reference_states: np.ndarray = None):
         """Visualize planning and control results."""
         print(f"\nVisualizing: {len(executed_states)} executed states")
         if len(executed_states) > 0:
             print(f"  First state: ({executed_states[0][0]:.2f}, {executed_states[0][1]:.2f})")
             print(f"  Last state: ({executed_states[-1][0]:.2f}, {executed_states[-1][1]:.2f})")
+        if reference_states is not None:
+            print(f"  Reference states collected: {len(reference_states)}")
         
-        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+        # Create figure with GridSpec for flexible layout
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(2, 3, height_ratios=[1.2, 1])
         
         (x_min, x_max), (y_min, y_max) = self.world_bounds
         
-        # --- Plot 1: Path Planning ---
-        ax1 = axes[0, 0]
+        # --- Plot 1: Controller Execution (Large, spans 2 columns) ---
+        ax1 = fig.add_subplot(gs[0, 0:2])
         ax1.set_xlim(x_min - 1, x_max + 1)
         ax1.set_ylim(y_min - 1, y_max + 1)
         ax1.set_aspect('equal')
-        ax1.set_title('Path Planning Result', fontsize=14, fontweight='bold')
+        ax1.set_title('Controller Execution Trajectory', fontsize=14, fontweight='bold')
         
         # Map boundary
         boundary = patches.Rectangle(
@@ -682,63 +696,30 @@ class ControllerTester:
                 )
                 ax1.add_patch(polygon)
         
-        # Planned path
-        if path:
-            path_x = [p[0] for p in path]
-            path_y = [p[1] for p in path]
-            ax1.plot(path_x, path_y, 'b-', linewidth=2, label='Planned Path')
-            ax1.scatter(path_x, path_y, s=20, c='blue', zorder=5)
-        
-        # Start and goal
-        ax1.scatter(*self.start[:2], s=200, c='green', marker='o', edgecolors='darkgreen', linewidth=2, label='Start', zorder=10)
-        ax1.scatter(*self.goal[:2], s=200, c='red', marker='s', edgecolors='darkred', linewidth=2, label='Goal', zorder=10)
-        
-        ax1.set_xlabel('X (meters)', fontsize=12)
-        ax1.set_ylabel('Y (meters)', fontsize=12)
-        ax1.legend(loc='upper right', fontsize=10)
-        ax1.grid(True, alpha=0.3)
-        
-        # --- Plot 2: Controller Execution ---
-        ax2 = axes[0, 1]
-        ax2.set_xlim(x_min - 1, x_max + 1)
-        ax2.set_ylim(y_min - 1, y_max + 1)
-        ax2.set_aspect('equal')
-        ax2.set_title('Controller Execution Trajectory', fontsize=14, fontweight='bold')
-        
-        # Map boundary
-        boundary2 = patches.Rectangle(
-            (x_min, y_min), x_max - x_min, y_max - y_min,
-            linewidth=2, edgecolor='black', facecolor='lightgray', alpha=0.1
-        )
-        ax2.add_patch(boundary2)
-        
-        # Obstacles
-        for i, obstacle in enumerate(self.map_obj.obstacles):
-            if obstacle.shape == ConvexShape.Circle:
-                circle = patches.Circle(
-                    (obstacle.center[0], obstacle.center[1]), obstacle.radius,
-                    linewidth=2, edgecolor='red', facecolor='red', alpha=0.4,
-                    label='Obstacles' if i == 0 else ''
-                )
-                ax2.add_patch(circle)
-            elif obstacle.shape == ConvexShape.Polygon:
-                polygon = patches.Polygon(
-                    obstacle.points, linewidth=2, edgecolor='red', facecolor='red', alpha=0.4,
-                    label='Obstacles' if i == 0 else ''
-                )
-                ax2.add_patch(polygon)
-        
-        # Reference trajectory (first 3 states for visualization)
+        # Reference trajectory
         ref_x = ref_traj[0, :]
         ref_y = ref_traj[1, :]
-        ax2.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Trajectory', alpha=0.7)
+        ax1.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Trajectory', alpha=0.7)
         
         # Executed trajectory
         if len(executed_states) > 0:
             exec_x = [state[0] for state in executed_states]
             exec_y = [state[1] for state in executed_states]
-            ax2.plot(exec_x, exec_y, 'b-', linewidth=2, label='Executed Trajectory')
-            ax2.scatter(exec_x, exec_y, s=10, c='blue', alpha=0.5, zorder=5)
+            ax1.plot(exec_x, exec_y, 'b-', linewidth=2, label='Executed Trajectory')
+            ax1.scatter(exec_x, exec_y, s=10, c='blue', alpha=0.5, zorder=5)
+        
+        # PathFollower reference states (what the controller is actually tracking)
+        if reference_states is not None and len(reference_states) > 0:
+            pf_ref_x = reference_states[:, 0]
+            pf_ref_y = reference_states[:, 1]
+            ax1.plot(pf_ref_x, pf_ref_y, 'orange', linewidth=2, linestyle=':', label='PathFollower Ref', zorder=6)
+            # Show theta direction arrows at intervals
+            arrow_step = max(1, len(reference_states) // 15)
+            for i in range(0, len(reference_states), arrow_step):
+                x, y, theta = reference_states[i, 0], reference_states[i, 1], reference_states[i, 2]
+                dx = 0.8 * np.cos(theta)
+                dy = 0.8 * np.sin(theta)
+                ax1.arrow(x, y, dx, dy, head_width=0.4, head_length=0.2, fc='orange', ec='darkorange', alpha=0.7, zorder=6)
             
             # Draw robot rectangles at regular intervals
             robot_length = self.robot.length
@@ -750,7 +731,6 @@ class ControllerTester:
                 x, y, theta = state[0], state[1], state[2]
                 
                 # Create rotated rectangle centered at robot position
-                # Rectangle goes from -length/2 to +length/2 in local x, -width/2 to +width/2 in local y
                 rect = patches.Rectangle(
                     (-robot_length/2, -robot_width/2), robot_length, robot_width,
                     linewidth=1.5, edgecolor='darkblue', facecolor='cyan', alpha=0.3
@@ -758,18 +738,18 @@ class ControllerTester:
                 
                 # Create transform: rotate and translate
                 t = patches.transforms.Affine2D().rotate_around(0, 0, theta) + patches.transforms.Affine2D().translate(x, y)
-                t += ax2.transData
+                t += ax1.transData
                 rect.set_transform(t)
-                ax2.add_patch(rect)
+                ax1.add_patch(rect)
         
         # Start and goal
-        ax2.scatter(*self.start[:2], s=200, c='green', marker='o', edgecolors='darkgreen', linewidth=2, label='Start', zorder=10)
-        ax2.scatter(*self.goal[:2], s=200, c='red', marker='s', edgecolors='darkred', linewidth=2, label='Goal', zorder=10)
+        ax1.scatter(*self.start[:2], s=200, c='green', marker='o', edgecolors='darkgreen', linewidth=2, label='Start', zorder=10)
+        ax1.scatter(*self.goal[:2], s=200, c='red', marker='s', edgecolors='darkred', linewidth=2, label='Goal', zorder=10)
         
-        ax2.set_xlabel('X (meters)', fontsize=12)
-        ax2.set_ylabel('Y (meters)', fontsize=12)
-        ax2.legend(loc='upper right', fontsize=10)
-        ax2.grid(True, alpha=0.3)
+        ax1.set_xlabel('X (meters)', fontsize=12)
+        ax1.set_ylabel('Y (meters)', fontsize=12)
+        ax1.legend(loc='upper right', fontsize=10)
+        ax1.grid(True, alpha=0.3)
         
         # --- Error Plots ---
         # Calculate path errors (x, y, theta relative to closest path point)
@@ -781,47 +761,47 @@ class ControllerTester:
             print(f"\n[DEBUG] Path errors calculated: {len(error_x)} points")
         
         # X error plot (top right)
-        ax3 = axes[0, 2]
-        ax3.plot(time_steps, error_x, 'r-', linewidth=2, label='X Error')
+        ax2 = fig.add_subplot(gs[0, 2])
+        ax2.plot(time_steps, error_x, 'r-', linewidth=2, label='X Error')
+        ax2.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        ax2.fill_between(time_steps, 0, error_x, alpha=0.3, color='red')
+        ax2.set_xlabel('Time Step', fontsize=12)
+        ax2.set_ylabel('Error (meters)', fontsize=12)
+        ax2.set_title('X Position Error vs Path', fontsize=14, fontweight='bold')
+        ax2.grid(True, alpha=0.3)
+        ax2.legend()
+        
+        # Y error plot (bottom left)
+        ax3 = fig.add_subplot(gs[1, 0])
+        ax3.plot(time_steps, error_y, 'b-', linewidth=2, label='Y Error')
         ax3.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax3.fill_between(time_steps, 0, error_x, alpha=0.3, color='red')
+        ax3.fill_between(time_steps, 0, error_y, alpha=0.3, color='blue')
         ax3.set_xlabel('Time Step', fontsize=12)
         ax3.set_ylabel('Error (meters)', fontsize=12)
-        ax3.set_title('X Position Error vs Path', fontsize=14, fontweight='bold')
+        ax3.set_title('Y Position Error vs Path', fontsize=14, fontweight='bold')
         ax3.grid(True, alpha=0.3)
         ax3.legend()
         
-        # Y error plot (bottom left)
-        ax4 = axes[1, 0]
-        ax4.plot(time_steps, error_y, 'b-', linewidth=2, label='Y Error')
+        # Theta error plot (bottom middle)
+        ax4 = fig.add_subplot(gs[1, 1])
+        ax4.plot(time_steps, error_theta, 'g-', linewidth=2, label='Theta Error')
         ax4.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax4.fill_between(time_steps, 0, error_y, alpha=0.3, color='blue')
+        ax4.fill_between(time_steps, 0, error_theta, alpha=0.3, color='green')
         ax4.set_xlabel('Time Step', fontsize=12)
-        ax4.set_ylabel('Error (meters)', fontsize=12)
-        ax4.set_title('Y Position Error vs Path', fontsize=14, fontweight='bold')
+        ax4.set_ylabel('Error (radians)', fontsize=12)
+        ax4.set_title('Theta (Angle) Error vs Path', fontsize=14, fontweight='bold')
         ax4.grid(True, alpha=0.3)
         ax4.legend()
         
-        # Theta error plot (bottom middle)
-        ax5 = axes[1, 1]
-        ax5.plot(time_steps, error_theta, 'g-', linewidth=2, label='Theta Error')
-        ax5.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax5.fill_between(time_steps, 0, error_theta, alpha=0.3, color='green')
+        # Cross-track error plot (bottom right)
+        ax5 = fig.add_subplot(gs[1, 2])
+        ax5.plot(time_steps, cross_track_errors, 'm-', linewidth=2, label='Cross-Track Error')
+        ax5.fill_between(time_steps, 0, cross_track_errors, alpha=0.3, color='magenta')
         ax5.set_xlabel('Time Step', fontsize=12)
-        ax5.set_ylabel('Error (radians)', fontsize=12)
-        ax5.set_title('Theta (Angle) Error vs Path', fontsize=14, fontweight='bold')
+        ax5.set_ylabel('Error (meters)', fontsize=12)
+        ax5.set_title('Cross-Track Error (Distance to Path)', fontsize=14, fontweight='bold')
         ax5.grid(True, alpha=0.3)
         ax5.legend()
-        
-        # Cross-track error plot (bottom right)
-        ax6 = axes[1, 2]
-        ax6.plot(time_steps, cross_track_errors, 'm-', linewidth=2, label='Cross-Track Error')
-        ax6.fill_between(time_steps, 0, cross_track_errors, alpha=0.3, color='magenta')
-        ax6.set_xlabel('Time Step', fontsize=12)
-        ax6.set_ylabel('Error (meters)', fontsize=12)
-        ax6.set_title('Cross-Track Error (Distance to Path)', fontsize=14, fontweight='bold')
-        ax6.grid(True, alpha=0.3)
-        ax6.legend()
         
         # Print path tracking error statistics
         print(f"\n--- Path Tracking Error Statistics ---")
@@ -851,11 +831,11 @@ class ControllerTester:
         ref_traj = self.generate_trajectory(path)
         
         # Simulate controller
-        executed_states, executed_controls = self.simulate_controller(path, ref_traj)
+        executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj)
         
         # Visualize
         print("\nVisualizing results...")
-        self.visualize(path, executed_states, ref_traj)
+        self.visualize(path, executed_states, ref_traj, reference_states)
         
         print("\n" + "=" * 60)
         print("TEST COMPLETE")
