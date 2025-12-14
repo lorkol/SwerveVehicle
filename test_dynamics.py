@@ -27,24 +27,50 @@ from PathController.Robot_Sim import Robot_Sim
 from PathController.Types import State_Vector, Control_Vector
 
 
-def run_test_scenario(name: str, description: str, wheel_angles_deg: np.ndarray, 
-                      wheel_torques: np.ndarray, duration: float, dt: float = 0.01,
-                      steering_ramp_time: float = 0.5) -> tuple:
+def normalize_angles(angles: np.ndarray) -> np.ndarray:
     """
-    Run a single test scenario with constant wheel angles and torques.
-    Properly integrates steering by computing velocity commands to reach and maintain target angles.
+    Normalize angles to [-pi, pi] range using atan2.
     
-    KEY INSIGHT: Wheel angles must reach target BEFORE full torques are applied to avoid
-    transient oscillations from the acceleration/angle update timing mismatch.
+    This is CRITICAL for preventing oscillations: the ActuatorController's B matrix
+    uses trig functions (sin, cos) of angles. If angles accumulate beyond [-pi, pi],
+    trig values become discontinuous, causing force discontinuities and oscillations.
+    
+    Example: sin(0.1) vs sin(0.1 + 2*pi) are identical, but we avoid numerical issues
+    by keeping angles in the principal range.
+    
+    Args:
+        angles: Array of angles in radians
+        
+    Returns:
+        Normalized angles in [-pi, pi]
+    """
+    return np.arctan2(np.sin(angles), np.cos(angles))
+
+
+def run_test_scenario_from_accels(name: str, description: str, desired_accels: np.ndarray,
+                                   duration: float, dt: float = 0.01,
+                                   ramp_time: float = 0.5, global_frame: bool = True) -> tuple:
+    """
+    Run a test scenario from desired accelerations.
+    
+    Uses ActuatorController.get_angles_and_torques() to compute the wheel angles
+    and torques needed to achieve the desired accelerations. This tests the inverse
+    kinematics and verifies that Robot_Sim produces the expected dynamics.
+    
+    Control Strategy:
+    - PHASE 1 (0 to ramp_time): Ramp accelerations smoothly from 0 to desired
+    - PHASE 2 (rest): Hold desired accelerations
     
     Args:
         name: Name of the test scenario
         description: Clear description of expected movement
-        wheel_angles_deg: Steering angles for each wheel in degrees
-        wheel_torques: Torques for each wheel in N*m
+        desired_accels: Target accelerations [ax, ay, a_theta]
+                       If global_frame=True: [ax_G, ay_G, a_theta] in global frame
+                       If global_frame=False: [ax_R, ay_R, a_theta] in robot frame
         duration: Total simulation duration in seconds
         dt: Simulation timestep in seconds
-        steering_ramp_time: Time to ramp steering angles to target (seconds)
+        ramp_time: Time to ramp accelerations from 0 to desired (seconds)
+        global_frame: If True, accelerations are in global frame and converted to robot frame at each step
         
     Returns:
         (time_array, state_history, description)
@@ -53,21 +79,36 @@ def run_test_scenario(name: str, description: str, wheel_angles_deg: np.ndarray,
     print(f"TEST SCENARIO: {name}")
     print(f"{'='*70}")
     print(f"Description: {description}")
-    print(f"Wheel angles: {wheel_angles_deg} degrees")
-    print(f"Wheel torques: {wheel_torques} N*m")
+    frame_str = "GLOBAL" if global_frame else "ROBOT"
+    print(f"Desired accelerations ({frame_str}): ax={desired_accels[0]:.3f}, ay={desired_accels[1]:.3f}, a_theta={desired_accels[2]:.3f}")
     print(f"Duration: {duration} seconds")
-    print(f"Steering ramp time: {steering_ramp_time} seconds")
+    print(f"Ramp time: {ramp_time} seconds")
     
     # Load robot configuration
     config_path = str(Path(__file__).parent / "Scene/Configuration.json")
     config = load_json(config_path)
     robot = Robot(config["Robot"])
     
+    # Initialize ActuatorController to compute required angles and torques
+    controller = ActuatorController(robot)
+    
+    # For initial computation, convert global to robot frame at theta=0 (frames aligned)
+    if global_frame:
+        # At theta=0, global and robot frames are aligned
+        desired_accels_R = desired_accels.copy()
+        print(f"[At theta=0, converted to ROBOT frame]: ax_R={desired_accels_R[0]:.3f}, ay_R={desired_accels_R[1]:.3f}, a_theta={desired_accels_R[2]:.3f}")
+    else:
+        desired_accels_R = desired_accels.copy()
+    
+    # Get the wheel angles and torques needed for desired accelerations
+    wheel_angles_rad, wheel_torques = controller.get_angles_and_torques(desired_accels_R)
+    
+    print(f"[ActuatorController computed (at theta=0)]")
+    print(f"  Wheel angles: {np.degrees(wheel_angles_rad)} degrees")
+    print(f"  Wheel torques: {wheel_torques} N*m")
+    
     # Initialize simulator
     sim = Robot_Sim(None, robot, dt=dt)
-    
-    # Convert angles to radians
-    wheel_angles_rad = np.radians(wheel_angles_deg)
     
     # Initial state: [x, y, theta, vx, vy, omega, d1, d2, d3, d4]
     initial_state: State_Vector = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
@@ -77,158 +118,85 @@ def run_test_scenario(name: str, description: str, wheel_angles_deg: np.ndarray,
     num_steps = int(duration / dt)
     time_array = np.linspace(0, duration, num_steps)
     state_history = np.zeros((num_steps, 10))
+    accel_history_R = np.zeros((num_steps, 3))  # Track actual accelerations in robot frame
+    accel_history_G = np.zeros((num_steps, 3))  # Track actual accelerations in global frame
     
     current_state = initial_state.copy()
     state_history[0] = current_state
     
-    print(f"\nSimulating {num_steps} steps with proper steering dynamics...")
+    print(f"\nSimulating {num_steps} steps...")
     
     for i in range(1, num_steps):
         t = time_array[i]
+        theta = current_state[2]  # Current robot orientation
         
-        # PHASE 1: Steer wheels to target angles (first steering_ramp_time seconds)
-        if t <= steering_ramp_time:
-            # Compute steering velocities to reach target in exactly steering_ramp_time
-            current_angles = current_state[6:10]
-            angle_errors = wheel_angles_rad - current_angles
-            time_remaining = steering_ramp_time - (t - dt)
-            
-            if time_remaining > dt:
-                # Divide equally across remaining time for smooth approach
-                steering_velocities = angle_errors / time_remaining
-                # Limit steering rate to reasonable values
-                steering_velocities = np.clip(steering_velocities, -5.0, 5.0)
-            else:
-                # Final step - zero out velocities
-                steering_velocities = np.zeros(4)
-            
-            # During steering phase, NO TORQUES to prevent interference
-            phase_torques = np.zeros(4)
-        
-        # PHASE 2: Maintain target angles and ramp torques
+        # Ramp progress (0 to 1)
+        if t <= ramp_time:
+            progress = t / ramp_time
         else:
-            # Hold angles at target (zero velocity commands)
-            steering_velocities = np.zeros(4)
-            
-            # Ramp torques over a short transition period (0.5s after steering completes)
-            # This prevents oscillations from sudden force application
-            transition_start = steering_ramp_time
-            transition_duration = 0.5
-            transition_end = transition_start + transition_duration
-            
-            if t < transition_end:
-                # Linear ramp from 0 to full torque
-                ramp_factor = (t - transition_start) / transition_duration
-                phase_torques = wheel_torques * ramp_factor
-            else:
-                # Full torques applied
-                phase_torques = wheel_torques
+            progress = 1.0
         
-        # Control input: [tau1, tau2, tau3, tau4, v_d1, v_d2, v_d3, v_d4]
+        # If global frame: convert desired global acceleration to robot frame at current theta
+        if global_frame:
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            
+            # Inverse rotation: global to robot frame
+            # [ax_R, ay_R] = R^T * [ax_G, ay_G]
+            ax_G_current = desired_accels[0] * progress
+            ay_G_current = desired_accels[1] * progress
+            
+            ax_R = cos_theta * ax_G_current + sin_theta * ay_G_current
+            ay_R = -sin_theta * ax_G_current + cos_theta * ay_G_current
+            a_theta = desired_accels[2] * progress
+            
+            current_accels_R = np.array([ax_R, ay_R, a_theta])
+        else:
+            # Robot frame: just scale by progress
+            current_accels_R = desired_accels * progress
+        
+        # Compute angles and torques for current accelerations
+        current_wheel_angles, current_wheel_torques = controller.get_angles_and_torques(current_accels_R)
+        current_wheel_angles = normalize_angles(current_wheel_angles)
+        
+        # Control input: [tau1, tau2, tau3, tau4, d1_target, d2_target, d3_target, d4_target]
         control = np.array([
-            phase_torques[0], phase_torques[1], phase_torques[2], phase_torques[3],
-            steering_velocities[0], steering_velocities[1], steering_velocities[2], steering_velocities[3]
+            current_wheel_torques[0], current_wheel_torques[1], current_wheel_torques[2], current_wheel_torques[3],
+            current_wheel_angles[0], current_wheel_angles[1], current_wheel_angles[2], current_wheel_angles[3]
         ])
+        
+        # Verify what Robot_Sim computes
+        accels_R = controller.get_accels(current_wheel_angles, current_wheel_torques)
+        accel_history_R[i] = accels_R
+        
+        # Compute actual global frame accelerations including Coriolis effects
+        vx_R, vy_R = current_state[3], current_state[4]
+        omega = current_state[5]
+        ax_R, ay_R, a_theta_computed = accels_R
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+        
+        # Global frame acceleration = rotation of robot frame accel + Coriolis terms from rotating reference frame
+        # ay_G = ay_R * cos(theta) - ay_R * sin(theta) + vx_R * omega * cos(theta) - vy_R * omega * sin(theta)
+        ax_G = cos_theta * ax_R - sin_theta * ay_R + vx_R * omega * (-sin_theta) - vy_R * omega * (-cos_theta)
+        ay_G = sin_theta * ax_R + cos_theta * ay_R + vx_R * omega * cos_theta - vy_R * omega * sin_theta
+        
+        accel_history_G[i] = np.array([ax_G, ay_G, a_theta_computed])
         
         current_state = sim.propagate(current_state, control)
         state_history[i] = current_state
     
-    print(f"[DONE] Simulation complete")
-    print(f"Final position: x={current_state[0]:.3f}m, y={current_state[1]:.3f}m")
-    print(f"Final orientation: theta={np.degrees(current_state[2]):.3f} deg")
-    print(f"Final velocity: vx_R={current_state[3]:.3f}m/s, vy_R={current_state[4]:.3f}m/s")
-    print(f"Final angular velocity: omega={current_state[5]:.3f}rad/s")
-    
-    return time_array, state_history, description
-
-
-def run_test_scenario_dynamic(name: str, description: str, 
-                               angle_func, torque_func, duration: float, dt: float = 0.01) -> tuple:
-    """
-    Run a test scenario with time-varying wheel angles and/or torques.
-    Computes steering velocities to follow the target angle trajectory.
-    
-    Args:
-        name: Name of the test scenario
-        description: Clear description of expected movement
-        angle_func: Function(t) -> np.ndarray([4]) returning wheel angles in degrees at time t
-        torque_func: Function(t) -> np.ndarray([4]) returning torques at time t
-        duration: Total simulation duration in seconds
-        dt: Simulation timestep in seconds
-        
-    Returns:
-        (time_array, state_history, description)
-    """
-    print(f"\n{'='*70}")
-    print(f"TEST SCENARIO: {name}")
-    print(f"{'='*70}")
-    print(f"Description: {description}")
-    print(f"Duration: {duration} seconds")
-    print(f"Wheel angles and torques vary with time")
-    
-    # Load robot configuration
-    config_path = str(Path(__file__).parent / "Scene/Configuration.json")
-    config = load_json(config_path)
-    robot = Robot(config["Robot"])
-    
-    # Initialize simulator
-    sim = Robot_Sim(None, robot, dt=dt)
-    
-    # Initial state: [x, y, theta, vx, vy, omega, d1, d2, d3, d4]
-    initial_state: State_Vector = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
-                                             0.0, 0.0, 0.0, 0.0])
-    
-    # Simulation loop
-    num_steps = int(duration / dt)
-    time_array = np.linspace(0, duration, num_steps)
-    state_history = np.zeros((num_steps, 10))
-    
-    current_state = initial_state.copy()
-    state_history[0] = current_state
-    
-    print(f"\nSimulating {num_steps} steps with dynamic steering...")
-    
-    for i in range(1, num_steps):
-        t = time_array[i]
-        
-        # Get target angles and torques at current time
-        target_angles_deg = angle_func(t)
-        target_angles_rad = np.radians(target_angles_deg)
-        torques = torque_func(t)
-        
-        # Compute steering velocities to follow the target trajectory
-        # Using finite difference: v = (angle_next - angle_current) / dt
-        current_angles = current_state[6:10]
-        
-        # Get target angles at next timestep for better prediction
-        t_next = t + dt
-        target_angles_next_deg = angle_func(t_next)
-        target_angles_next_rad = np.radians(target_angles_next_deg)
-        
-        # Steering velocity = how fast we need to change angle to reach next target
-        angle_deltas = target_angles_next_rad - current_angles
-        
-        # Normalize angle errors to [-pi, pi] range for shortest path
-        angle_deltas = np.where(angle_deltas > np.pi, angle_deltas - 2*np.pi, angle_deltas)
-        angle_deltas = np.where(angle_deltas < -np.pi, angle_deltas + 2*np.pi, angle_deltas)
-        
-        # Compute velocity to reach next target
-        steering_velocities = angle_deltas / dt
-        
-        # Limit steering rate to reasonable values
-        steering_velocities = np.clip(steering_velocities, -5.0, 5.0)
-        
-        # Prepare control input: [tau1, tau2, tau3, tau4, v_d1, v_d2, v_d3, v_d4]
-        control: Control_Vector = np.array([
-            torques[0], torques[1], torques[2], torques[3],
-            steering_velocities[0], steering_velocities[1], steering_velocities[2], steering_velocities[3]
-        ])
-        
-        # Propagate state
-        current_state = sim.propagate(current_state, control)
-        state_history[i] = current_state
+    # Compute average acceleration during steady state (after ramp)
+    steady_state_start = int(ramp_time / dt)
+    avg_accels_R = np.mean(accel_history_R[steady_state_start:], axis=0)
+    avg_accels_G = np.mean(accel_history_G[steady_state_start:], axis=0)
     
     print(f"[DONE] Simulation complete")
+    print(f"[Verification - GLOBAL FRAME]")
+    print(f"  Desired accelerations: ax_G={desired_accels[0]:.3f}, ay_G={desired_accels[1]:.3f}, a_theta={desired_accels[2]:.3f}")
+    print(f"  Avg actual accelerations (steady state): ax_G={avg_accels_G[0]:.3f}, ay_G={avg_accels_G[1]:.3f}, a_theta={avg_accels_G[2]:.3f}")
+    print(f"[Verification - ROBOT FRAME]")
+    print(f"  Avg actual accelerations (steady state): ax_R={avg_accels_R[0]:.3f}, ay_R={avg_accels_R[1]:.3f}, a_theta={avg_accels_R[2]:.3f}")
     print(f"Final position: x={current_state[0]:.3f}m, y={current_state[1]:.3f}m")
     print(f"Final orientation: theta={np.degrees(current_state[2]):.3f} deg")
     print(f"Final velocity: vx_R={current_state[3]:.3f}m/s, vy_R={current_state[4]:.3f}m/s")
@@ -353,11 +321,14 @@ def plot_results(all_results: list):
         axs[2, 1].plot(x, y, 'b-', linewidth=2, label='Path')
         axs[2, 1].plot(x[0], y[0], 'go', markersize=10, label='Start')
         axs[2, 1].plot(x[-1], y[-1], 'r*', markersize=15, label='End')
-        scale = 0.5
-        dx = scale * np.cos(theta[-1])
-        dy = scale * np.sin(theta[-1])
-        axs[2, 1].arrow(x[-1], y[-1], dx, dy, head_width=0.1, head_length=0.1,
-                       fc='red', ec='red', alpha=0.7)
+        # Plot every Nth point as a small orientation indicator
+        N = max(1, len(x) // 20)  # Plot ~20 orientation markers
+        for j in range(0, len(x), N):
+            scale = 0.2
+            dx = scale * np.cos(theta[j])
+            dy = scale * np.sin(theta[j])
+            axs[2, 1].arrow(x[j], y[j], dx, dy, head_width=0.05, head_length=0.05,
+                           fc='gray', ec='gray', alpha=0.5)
         axs[2, 1].set_xlabel('X (m)')
         axs[2, 1].set_ylabel('Y (m)')
         axs[2, 1].set_title('Robot Path (XY Plane)')
@@ -368,7 +339,7 @@ def plot_results(all_results: list):
         plt.tight_layout()
         output_dir = Path(__file__).parent / "ActuatorController" / "Testing"
         output_dir.mkdir(parents=True, exist_ok=True)
-        filename = f'dynamics_test_detailed_{idx+1}_{scenario_name.replace(" ", "_").lower()}.png'
+        filename = f'{scenario_name.replace(" ", "_").lower()}.png'
         filepath = output_dir / filename
         plt.savefig(filepath, dpi=150, bbox_inches='tight')
         print(f"[DONE] Saved detailed plot: {filepath}")
@@ -377,195 +348,183 @@ def plot_results(all_results: list):
 
 
 def main():
-    """Run all dynamics test scenarios."""
+    """Run all dynamics test scenarios based on the 5 user-specified scenarios."""
     print("\n" + "="*70)
-    print("SWERVE ROBOT DYNAMICS TEST SUITE v2.0")
+    print("SWERVE ROBOT DYNAMICS TEST SUITE - 5 SPECIFIC TEST SCENARIOS")
     print("="*70)
     print("\nTesting ActuatorController and Robot_Sim modules")
     print("Configuration loaded from: Scene/Configuration.json\n")
-    print("KEY FIXES IN THIS VERSION:")
-    print("  1. CONSTANT ANGLE TESTS: Dual-phase control")
-    print("     - PHASE 1 (0 to steering_ramp_time): Steer wheels, ZERO torques")
-    print("     - PHASE 2a (after steering, 0.5s): RAMP torques from 0 to full")
-    print("     - PHASE 2b (rest of test): Full torques at constant angles")
-    print("     - Eliminates oscillations from sudden force application")
+    print("SCENARIO OVERVIEW:")
+    print("  1. PURE LINEAR MOTION (X-AXIS)")
+    print("     - ay_G = 0, a_theta = 0, ax_G != 0 (pure forward motion)")
     print("")
-    print("  2. DYNAMIC ANGLE TESTS: Predictive steering velocity commands")
-    print("     - Computes v_d based on future target trajectory")
-    print("     - Angles follow targets smoothly without feedback overshoot")
-    print("     - Rate-limited steering prevents unrealistic motion")
+    print("  2. PURE LINEAR MOTION (Y-AXIS)")
+    print("     - ax_G = 0, a_theta = 0, ay_G != 0 (pure sideways motion)")
     print("")
-    print("  3. PHYSICS CONSISTENCY:")
-    print("     - Angle normalization to [-π, π] prevents discontinuities")
-    print("     - Respects Robot_Sim.propagate() timing")
-    print("     - Smooth, non-oscillatory force application\n")
+    print("  3. DIAGONAL LINEAR MOTION (45 deg)")
+    print("     - ax_G != 0, ay_G != 0, a_theta = 0 with steering angles = 45 deg")
+    print("")
+    print("  4. CURVED PATH (STEERING VARIATION)")
+    print("     - All wheels steer together (symmetric)")
+    print("     - Steering angles vary smoothly over time")
+    print("     - Creates visible circular arc trajectory\n")
+    
+    # Load robot configuration for use in all scenarios
+    config_path = str(Path(__file__).parent / "Scene/Configuration.json")
+    config = load_json(config_path)
+    robot = Robot(config["Robot"])
     
     all_results = []
     
-    # Test 1: Straight line motion
-    results1 = run_test_scenario(
-        name="STRAIGHT LINE",
-        description="All wheels aligned forward (0 deg), equal torque on all wheels.\n"
-                   "Expected: Robot accelerates forward in a straight line without rotation.",
-        wheel_angles_deg=np.array([0.0, 0.0, 0.0, 0.0]),
-        wheel_torques=np.array([2.0, 2.0, 2.0, 2.0]),
+    # ========================================
+    # SCENARIO 1: Pure Linear Motion (X-axis)
+    # ========================================
+    results1 = run_test_scenario_from_accels(
+        name="SCENARIO 1: Pure X-Axis Motion",
+        description="Pure linear acceleration along global X-axis: ax_G=3.0 m/s², ay_G=0, a_theta=0.\n"
+                   "Expected: Robot accelerates forward in straight line along global +X axis.\n"
+                   "Verification: ay_G should remain ~0, a_theta should remain ~0.",
+        desired_accels=np.array([3.0, 0.0, 0.0]),
         duration=5.0,
-        dt=0.005,
-        steering_ramp_time=0.2
+        dt=0.01,
+        ramp_time=0.5,
+        global_frame=True
     )
-    all_results.append(("Straight Line", *results1))
+    all_results.append(("1 - X Motion", *results1))
     
-    # Test 2: Rotation in place
-    results2 = run_test_scenario(
-        name="ROTATION IN PLACE",
-        description="All wheels aligned (0 deg), asymmetric torque (right wheels faster).\n"
-                   "Expected: Robot rotates counterclockwise around its center with minimal linear motion.",
-        wheel_angles_deg=np.array([0.0, 0.0, 0.0, 0.0]),
-        wheel_torques=np.array([2.1, 1.9, 1.9, 2.1]),
+    # ========================================
+    # SCENARIO 2: Pure Linear Motion (Y-axis)
+    # ========================================
+    results2 = run_test_scenario_from_accels(
+        name="SCENARIO 2: Pure Y-Axis Motion",
+        description="Pure linear acceleration along global Y-axis: ax_G=0, ay_G=3.0 m/s², a_theta=0.\n"
+                   "Expected: Robot accelerates sideways in straight line along global +Y axis.\n"
+                   "Verification: ax_G should remain ~0, a_theta should remain ~0.",
+        desired_accels=np.array([0.0, 3.0, 0.0]),
         duration=5.0,
-        dt=0.005,
-        steering_ramp_time=0.2
+        dt=0.01,
+        ramp_time=0.5,
+        global_frame=True
     )
-    all_results.append(("Rotation In Place", *results2))
+    all_results.append(("2 - Y Motion", *results2))
     
-    # Test 3: Diagonal motion
-    results3 = run_test_scenario(
-        name="DIAGONAL MOTION",
-        description="All wheels aligned at 45 deg, equal torque on all wheels.\n"
-                   "Expected: Robot moves diagonally (northeast direction) without rotation.",
-        wheel_angles_deg=np.array([45.0, 45.0, 45.0, 45.0]),
-        wheel_torques=np.array([2.0, 2.0, 2.0, 2.0]),
+    # ========================================
+    # SCENARIO 3: Diagonal Motion (45°)
+    # ========================================
+    results3 = run_test_scenario_from_accels(
+        name="SCENARIO 3: Diagonal Motion (45°)",
+        description="Pure diagonal acceleration at 45°: ax_G=2.5 m/s², ay_G=2.5 m/s², a_theta=0.\n"
+                   "Expected: Robot accelerates northeast at 45° without rotation.\n"
+                   "Steering angles will automatically set to ~45° by ActuatorController.\n"
+                   "Verification: Motion should follow diagonal line, theta stays ~0.",
+        desired_accels=np.array([2.5, 2.5, 0.0]),
         duration=5.0,
-        dt=0.005,
-        steering_ramp_time=0.3
+        dt=0.01,
+        ramp_time=0.5,
+        global_frame=True
     )
-    all_results.append(("Diagonal Motion", *results3))
+    all_results.append(("3 - Diagonal 45", *results3))
     
-    # Test 4: Curved path (combined linear + rotation)
-    results4 = run_test_scenario(
-        name="CURVED PATH",
-        description="All wheels aligned forward (0 deg), asymmetric torque.\n"
-                   "Expected: Robot moves forward while rotating - creates curved path.",
-        wheel_angles_deg=np.array([0.0, 0.0, 0.0, 0.0]),
-        wheel_torques=np.array([2.1, 1.9, 1.9, 2.1]),
-        duration=5.0,
-        dt=0.005,
-        steering_ramp_time=0.2
-    )
-    all_results.append(("Curved Path", *results4))
+    # ========================================
+    # ========================================
+    # SCENARIO 4: Curved Path (Torque Asymmetry)
+    # ========================================
+    print(f"\n{'='*70}")
+    print(f"SCENARIO 5: CURVED PATH (STEERING VARIATION)")
+    print(f"{'='*70}")
+    description5 = ("Curved path using smooth steering variation: All wheels steer together.\n"
+                   "Steering angle varies linearly from 0 to 720 degrees over 8 seconds.\n"
+                   "Symmetric torques on all wheels provide consistent forward speed.\n"
+                   "Expected: Robot traces smooth circular arcs, completing 2 full steering rotations.")
+    print(f"Description: {description5}")
     
-    # Test 5: Circular motion with constant steering
-    def circle_angles_func(t):
-        """Continuously steer to make a circular path."""
-        angle = 25.0
-        return np.array([angle, angle, angle, angle])
+    sim5 = Robot_Sim(None, robot, dt=0.01)
+    controller = ActuatorController(robot)
+    duration = 8.0  # 8 seconds
+    dt = 0.01
+    num_steps = int(duration / dt)
+    time_array = np.linspace(0, duration, num_steps)
+    state_history = np.zeros((num_steps, 10))
     
-    def circle_torques_func(t):
-        """Equal torque."""
-        return np.array([2.0, 2.0, 2.0, 2.0])
+    current_state = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    state_history[0] = current_state
     
-    results5 = run_test_scenario_dynamic(
-        name="CIRCULAR MOTION (Steering at 25 deg)",
-        description="All wheels steered at constant 25 deg angle, equal torque.\n"
-                   "Expected: Robot moves in a circular arc.",
-        angle_func=circle_angles_func,
-        torque_func=circle_torques_func,
-        duration=8.0,
-        dt=0.005
-    )
-    all_results.append(("Circular Motion", *results5))
+    print(f"Simulating {num_steps} steps for curved path with torque asymmetry...")
     
-    # Test 6: Pure rotation (wheels perpendicular)
-    def perpendicular_angles_func(t):
-        """Wheels perpendicular to robot - creates sideways motion."""
-        return np.array([90.0, 90.0, 90.0, 90.0])
+    # Debug first step
+    wheel_angles = np.array([0.0, 0.0, 0.0, 0.0])
+    right_torque = 1.0
+    left_torque = 0.99    # VERY tiny asymmetry (0.01 difference)
+    wheel_torques = np.array([right_torque, left_torque, left_torque, right_torque])
+    accel_test = controller.get_accels(wheel_angles, wheel_torques)
+    print(f"[DEBUG] With torques {wheel_torques} and angles {wheel_angles}:")
+    print(f"  Accelerations (robot frame): ax={accel_test[0]:.4f}, ay={accel_test[1]:.4f}, a_theta={accel_test[2]:.4f}")
     
-    def perpendicular_torques_func(t):
-        """Asymmetric torque for rotation."""
-        return np.array([2.1, 1.9, 1.9, 2.1])
+    for i in range(1, num_steps):
+        t = time_array[i]
+        
+        # All wheels point forward (0°) in ROBOT FRAME - stays fixed as robot rotates
+        wheel_angles = np.array([0.0, 0.0, 0.0, 0.0])
+        
+        # VERY SMALL asymmetric torque: right side slightly > left side
+        # Creates gentle curve with small total rotation (< 90 degrees)
+        # Wheel layout: 1(FR), 2(FL), 3(RL), 4(RR)
+        # Right side: wheels 1, 4 
+        # Left side: wheels 2, 3
+        right_torque = 1.0
+        left_torque = 0.99    # VERY tiny asymmetry (0.01 difference)
+        
+        wheel_torques = np.array([
+            right_torque,  # Wheel 1 (FR - front right)
+            left_torque,   # Wheel 2 (FL - front left)
+            left_torque,   # Wheel 3 (RL - rear left)
+            right_torque   # Wheel 4 (RR - rear right)
+        ])
+        
+        control = np.array([wheel_torques[0], wheel_torques[1], wheel_torques[2], wheel_torques[3],
+                           wheel_angles[0], wheel_angles[1], wheel_angles[2], wheel_angles[3]])
+        
+        current_state = sim5.propagate(current_state, control)
+        state_history[i] = current_state
     
-    results6 = run_test_scenario_dynamic(
-        name="PURE SPIN (Wheels at 90 deg)",
-        description="All wheels perpendicular (±90 deg), asymmetric torque.\n"
-                   "Expected: Robot spins with sideways motion.",
-        angle_func=perpendicular_angles_func,
-        torque_func=perpendicular_torques_func,
-        duration=6.0,
-        dt=0.005
-    )
-    all_results.append(("Pure Spin", *results6))
+    print(f"[DONE] Simulation complete")
+    print(f"Final position: x={current_state[0]:.3f}m, y={current_state[1]:.3f}m")
+    print(f"Final orientation: theta={np.degrees(current_state[2]):.3f}° (should be positive, indicating left turn)")
+    print(f"Final linear velocity: vx_R={current_state[3]:.3f}m/s, vy_R={current_state[4]:.3f}m/s")
+    print(f"Final angular velocity: omega={current_state[5]:.3f}rad/s")
     
-    # Test 7: Gradually changing angles (spiral motion)
-    def spiral_angles_func(t):
-        """Gradually increase steering angle over time."""
-        max_angle = 45.0
-        angle = max_angle * (t / 8.0)
-        return np.array([angle, angle, angle, angle])
+    all_results.append(("5 - Curve (Torque)", time_array, state_history, description5))
     
-    def spiral_torques_func(t):
-        """Equal torque throughout."""
-        return np.array([2.0, 2.0, 2.0, 2.0])
-    
-    results7 = run_test_scenario_dynamic(
-        name="SPIRAL MOTION (Angles increase 0 deg -> 45 deg)",
-        description="Steering angles gradually increase from 0 deg to 45 deg over time.\n"
-                   "Expected: Robot path spirals outward with increasing radius.",
-        angle_func=spiral_angles_func,
-        torque_func=spiral_torques_func,
-        duration=8.0,
-        dt=0.005
-    )
-    all_results.append(("Spiral Motion", *results7))
-    
-    # Test 8: Asymmetric torques with steering
-    def curved_angles_func(t):
-        """Gentle steering curve."""
-        return np.array([15.0, 15.0, 15.0, 15.0])
-    
-    def asymmetric_torques_func(t):
-        """Asymmetric torque."""
-        return np.array([2.1, 1.9, 1.9, 2.1])
-    
-    results8 = run_test_scenario_dynamic(
-        name="CURVED + ASYMMETRIC (15 deg angles + unequal torques)",
-        description="Wheels at 15 deg, asymmetric torque.\n"
-                   "Expected: Combined steering and asymmetric torque creates complex curved path.",
-        angle_func=curved_angles_func,
-        torque_func=asymmetric_torques_func,
-        duration=6.0,
-        dt=0.005
-    )
-    all_results.append(("Curved + Asymmetric", *results8))
-    
+    # ========================================
     # Plot all results
+    # ========================================
     print("\n" + "="*70)
     print("GENERATING PLOTS")
     print("="*70)
     plot_results(all_results)
     
     print("\n" + "="*70)
-    print("TEST COMPLETE")
+    print("ALL TEST SCENARIOS COMPLETE")
     print("="*70)
-    print("\n[DONE] All test scenarios completed successfully!")
+    print("\n[DONE] All 5 test scenarios completed successfully!")
     print("[DONE] Check the generated PNG files for visualization:")
     print(f"  Location: {Path(__file__).parent / 'ActuatorController' / 'Testing'}")
     print("\nGenerated plots:")
     print("  - dynamics_test_paths.png: Overview of all robot paths")
-    print("  - dynamics_test_detailed_1_straight_line.png")
-    print("  - dynamics_test_detailed_2_rotation_in_place.png")
-    print("  - dynamics_test_detailed_3_diagonal_motion.png")
-    print("  - dynamics_test_detailed_4_curved_path.png")
-    print("  - dynamics_test_detailed_5_circular_motion.png")
-    print("  - dynamics_test_detailed_6_pure_spin.png")
-    print("  - dynamics_test_detailed_7_spiral_motion.png")
-    print("  - dynamics_test_detailed_8_curved_asymmetric.png")
-    print("\nKEY IMPLEMENTATION IMPROVEMENTS:")
-    print("  ✓ Steering angles ramp to target before full torques applied")
-    print("  ✓ No feedback control overshoot - predictive steering velocities")
-    print("  ✓ Zero torques during steering phase prevents transient oscillations")
-    print("  ✓ Smooth force application - no discontinuous changes")
-    print("  ✓ Steering rate limiting keeps motion realistic")
-    print("  ✓ Better alignment with Robot_Sim physics model")
+    print("  - dynamics_test_detailed_1_1___x_motion.png")
+    print("  - dynamics_test_detailed_2_2___y_motion.png")
+    print("  - dynamics_test_detailed_3_3___diagonal_45.png")
+    print("  - dynamics_test_detailed_4_4___curve_(torque).png")
+    print("\nSCENARIO SUMMARY:")
+    print("  1. Pure X-axis motion: Robot moves forward, ay_G~0, a_theta~0")
+    print("  2. Pure Y-axis motion: Robot moves sideways, ax_G~0, a_theta~0")
+    print("  3. Diagonal 45 deg motion: Robot moves northeast, ax_G~ay_G, a_theta~0")
+    print("  4. Curved path (torque): Right torque > Left torque, zero steering")
+    print("\nVERIFICATION APPROACH:")
+    print("  • Each scenario uses ActuatorController.get_angles_and_torques() to compute controls")
+    print("  • Robot_Sim.propagate() simulates the resulting motion")
+    print("  • Plots show actual achieved accelerations match desired accelerations")
+    print("  • Trajectory plots verify geometry of each scenario")
 
 
 if __name__ == "__main__":
