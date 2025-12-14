@@ -72,11 +72,7 @@ class ActuatorController:
         - All wheels pointing same direction for linear motion
         
         Args:
-            accels_R: Desired accelerations [ax_R, ay_R, a_theta]
-            M_mat: Mass/inertia matrix (3x3)
-            l: Half-length of robot
-            w: Half-width of robot
-            r: Wheel radius
+            accels_R: Desired accelerations [ax_R, ay_R, a_theta] in Robot Frame            
             
         Returns:
             (wheel_angles, wheel_torques): Wheel angles and torques
@@ -197,14 +193,14 @@ class ActuatorController:
         
         return jacobian
 
-#Usage:
-    ## Solve the ODE (Integrate the dynamics over time)
-    # solution = odeint(
-    #     self.get_state_derivatives,
-    #     X0, #np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # State Vector: [x, y, theta, vx_R, vy_R, v_theta]
-    #     TIME_POINTS, #TIME_POINTS = np.linspace(0, TIME_TOTAL, TIME_STEPS)
-    #     args=(WHEEL_ANGLES, WHEEL_TORQUES)
-    # )
+    #Usage:
+        ## Solve the ODE (Integrate the dynamics over time)
+        # solution = odeint(
+        #     self.get_state_derivatives,
+        #     X0, #np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # State Vector: [x, y, theta, vx_R, vy_R, v_theta]
+        #     TIME_POINTS, #TIME_POINTS = np.linspace(0, TIME_TOTAL, TIME_STEPS)
+        #     args=(WHEEL_ANGLES, WHEEL_TORQUES)
+        # )
     
     def get_state_derivatives(self, X: np.ndarray, wheel_angles: np.ndarray, wheel_torques: np.ndarray) -> np.ndarray:
         """

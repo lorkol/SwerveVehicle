@@ -31,7 +31,7 @@ Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]
 
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
-    def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False) -> None:
+    def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False, collision_clearance: float = 0.0) -> None:
         super().__init__()
         self._robot: Robot = robot
         self._obstacles: List[Obstacle] = obstacles
@@ -40,6 +40,8 @@ class StaticObstacleChecker(ObstacleChecker):
         self._use_only_bounding_circles: bool = False
         '''If true, only use bounding circle checks for collision detection (faster, less accurate).'''
         self._use_parallelization: bool = use_parallelization and len(obstacles) > 5
+        self._collision_clearance: float = collision_clearance
+        '''Minimum clearance distance from obstacles (in meters). Robot must maintain this distance.'''
         
         # Pre-compute bounding circles for obstacles (for quick rejection)
         self._obstacle_bounds = self._compute_obstacle_bounds()
@@ -206,8 +208,8 @@ class StaticObstacleChecker(ObstacleChecker):
         # Distance between centers
         dist = math.sqrt((robot_x - center[0])**2 + (robot_y - center[1])**2)
         
-        # If too far apart, no collision possible
-        return dist > (robot_radius + radius + 1.0)  # +1.0 safety margin
+        # If too far apart, no collision possible (accounting for clearance)
+        return dist > (robot_radius + radius + self._collision_clearance + 1.0)  # +1.0 safety margin
     
     def _check_obstacle_collision(self, obstacle_idx: int, state: State2D, robot_geom: Robot_Geom) -> bool:
         """
@@ -251,14 +253,40 @@ class StaticObstacleChecker(ObstacleChecker):
     def _polygon_rectangle_collision(self, polygon_points: List[Point2D], robot_geom: Robot_Geom) -> bool:
         """
         Check collision between rectangular robot and single polygon obstacle using Separating Axis Theorem (SAT).
+        Accounts for collision clearance by expanding the rectangle.
         
         Args:
             polygon_points: List[Point2D], 
             robot_geom: Pre-computed robot geometry tuple from _precompute_robot_geometry()
         Returns:
-            True if collision detected, False otherwise
+            True if collision detected (including clearance violation), False otherwise
         """
         rect_corners_world, robot_x, robot_y, robot_theta, axes = robot_geom
+        
+        # Expand rectangle corners by clearance distance from center
+        if self._collision_clearance > 0:
+            expanded_corners = []
+            for corner in rect_corners_world:
+                # Vector from robot center to corner
+                to_corner_x = corner[0] - robot_x
+                to_corner_y = corner[1] - robot_y
+                
+                # Distance from center to corner
+                dist = math.sqrt(to_corner_x**2 + to_corner_y**2)
+                
+                if dist > 1e-6:
+                    # Normalize and expand corner outward
+                    dir_x = to_corner_x / dist
+                    dir_y = to_corner_y / dist
+                    expanded_corner = (
+                        corner[0] + dir_x * self._collision_clearance,
+                        corner[1] + dir_y * self._collision_clearance
+                    )
+                else:
+                    expanded_corner = corner
+                    
+                expanded_corners.append(expanded_corner)
+            rect_corners_world = expanded_corners
         
         # Polygon edge normals
         for i in range(len(polygon_points)):
@@ -298,6 +326,7 @@ class StaticObstacleChecker(ObstacleChecker):
     def _circle_rectangle_collision(self, circle_center: Point2D, circle_radius: float, robot_state: State2D) -> bool:
         """
         Check collision between a rotated rectangle (robot) and a circle (obstacle).
+        Accounts for collision clearance distance.
         
         Args:
             circle_center: (x, y) position of circle
@@ -305,7 +334,7 @@ class StaticObstacleChecker(ObstacleChecker):
             robot_state: (x, y, theta) position and orientation of robot
             
         Returns:
-            True if collision detected, False otherwise
+            True if collision detected (including clearance violation), False otherwise
         """
         robot_x, robot_y, robot_theta = robot_state
         circle_x, circle_y = circle_center
@@ -336,8 +365,8 @@ class StaticObstacleChecker(ObstacleChecker):
         dist_y = local_y - closest_y
         distance = math.sqrt(dist_x**2 + dist_y**2)
         
-        # Step 4: Check collision
-        return distance < circle_radius
+        # Step 4: Check collision (including clearance)
+        return distance < (circle_radius + self._collision_clearance)
         
     def is_collision(self, state: State2D) -> bool:
         """
@@ -416,6 +445,7 @@ class StaticObstacleChecker(ObstacleChecker):
     def _get_single_obstacle_distance(self, obstacle_idx: int, state: State2D, robot_geom: Robot_Geom) -> float:
         """
         Compute minimum distance from robot to a single obstacle.
+        Returns the actual distance minus the clearance requirement.
         
         Args:
             obstacle_idx: Index of obstacle
@@ -423,7 +453,7 @@ class StaticObstacleChecker(ObstacleChecker):
             robot_geom: Pre-computed robot geometry tuple
             
         Returns:
-            Minimum distance to obstacle (negative if collision)
+            Minimum distance to obstacle minus clearance (negative if violation)
         """
         obs = self._obstacles[obstacle_idx]
         robot_x, robot_y, robot_theta = state
@@ -458,7 +488,8 @@ class StaticObstacleChecker(ObstacleChecker):
                     dist = self._point_to_segment_distance(vertex, p1, p2)
                     min_dist = min(min_dist, dist)
         
-        return min_dist
+        # Subtract clearance from distance to get remaining safety margin
+        return min_dist - self._collision_clearance
     
     def get_obstacle_distances(self, state: State2D) -> List[float]:
         """

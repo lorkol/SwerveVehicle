@@ -23,6 +23,10 @@ from PathPlanning.DStarPlanner import DStarPlanner
 from PathPlanning.TrajectoryGenerator import TrajectoryGenerator
 from PathController.Robot_Sim import Robot_Sim
 from PathController.MPPI.MPPI_Controller import MPPIController
+from PathController.Controller import Controller, ControllerTypes
+from PathController.SMC_Controller import SMCController
+from PathController.LQR_Controller import LQRController
+from PathController.MRAC_Controller import MRACController
 from ActuatorController.ActuatorController import ActuatorController
 from Scene.JsonManager import load_json
 from Scene.Map import Map
@@ -346,6 +350,7 @@ def test_collision_detection():
 
 class ControllerTester:
     """Test MPPI controller with planned trajectories."""
+    DEBUG = True  # Set to False to remove all debug prints
     
     def __init__(self, config_path: str = "Scene/Configuration.json", params_path: str = "Scene/Parameters.json"):
         """Initialize controller tester."""
@@ -437,6 +442,7 @@ class ControllerTester:
         """Generate reference trajectory from path."""
         control_config = self.params.get("Control", {})
         mppi_config = control_config.get("MPPI", {})
+        lqr_config = control_config.get("LQR", {})
         
         dt = mppi_config.get("dt", 0.1)  # Use same dt as simulation
         # Calculate horizon needed to traverse the entire path
@@ -447,14 +453,15 @@ class ControllerTester:
             dy = path[i+1][1] - path[i][1]
             path_length += (dx**2 + dy**2)**0.5
         
-        max_velocity = 2.0  # m/s
-        time_to_goal = path_length / max_velocity  # seconds
+        # Use actual controller velocity instead of max velocity
+        v_desired = lqr_config.get("v_desired", 2.0)  # m/s
+        time_to_goal = path_length / v_desired  # seconds
         horizon = int(time_to_goal / dt) + 50  # Add 50 extra steps as buffer
         horizon = max(horizon, 500)  # At least 500 steps
         
         print(f"  Path length: {path_length:.2f}m, time to goal: {time_to_goal:.2f}s, horizon: {horizon}")
         
-        traj_gen = TrajectoryGenerator(dt=dt, horizon=horizon, max_velocity=max_velocity)
+        traj_gen = TrajectoryGenerator(dt=dt, horizon=horizon, max_velocity=v_desired)
         
         # Initial state: start position with zero velocity
         current_state = np.array([self.start[0], self.start[1], self.start[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -469,12 +476,36 @@ class ControllerTester:
         print(f"  Ref velocities (last 5): {ref_traj[3:6, -5:]}")
         return ref_traj
     
-    def simulate_controller(self, ref_traj: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def simulate_controller(self, path, ref_traj: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """Simulate MPPI controller following reference trajectory with rolling horizon."""
-        control_config = self.params.get("Control", {})
-        mppi_config = control_config.get("MPPI", {})
-        dt = mppi_config.get("dt", 0.1)
-        mppi_horizon = 10  # MPPI horizon for lookahead
+        # Create Controller
+        controller_params = self.params["Control"]
+        controller_type_str = controller_params["Controller"]["type"]
+        try:
+            controller_type = ControllerTypes(controller_type_str)
+        except (ValueError, KeyError):
+            print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController")
+            controller_type = ControllerTypes.LQR
+        controller_params = controller_params[controller_type.value]
+        if controller_type == ControllerTypes.LQR:
+            lookahead: float = controller_params["lookahead"]
+            v_desired: float = controller_params["v_desired"]
+            dt: float = controller_params["dt"]
+            Q = controller_params["Q"]
+            R = controller_params["R"]
+            controller: Controller = LQRController(robot_controller= self.actuator_controller, path_points=path, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
+        elif controller_type == ControllerTypes.MRAC:
+            lookahead: float = controller_params["lookahead"]
+            v_desired: float = controller_params["v_desired"]
+            dt: float = controller_params["dt"]
+            gamma: float = controller_params["gamma"]
+            kp: float = controller_params["kp"]
+            kv: float = controller_params["kv"]
+            alpha_min: float = controller_params["alpha_min"]
+            alpha_max: float = controller_params["alpha_max"]
+            controller: Controller = MRACController(robot_controller= self.actuator_controller, path_points=path, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+        else: #MPPI
+            raise NotImplementedError("No MPPI controller yet")
         
         # Create robot simulator
         robot_sim = Robot_Sim(self.actuator_controller, self.robot, dt=dt)
@@ -483,149 +514,146 @@ class ControllerTester:
         initial_state = np.array([self.start[0], self.start[1], self.start[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         robot_sim.set_state(initial_state)
         
-        # Simulate
-        print(f"Simulating controller (MPPI horizon={mppi_horizon})...")
+        # Simulation loop
         executed_states = [initial_state.copy()]
         executed_controls = []
+        current_state = initial_state.copy()
         
-        max_steps = ref_traj.shape[1] * 20  # Allow twice the reference trajectory length
-        goal_threshold = 1.0  # Distance to goal
-        ref_idx = 0  # Current index in reference trajectory
+        if self.DEBUG:
+            print(f"\n[DEBUG] Initial state: {initial_state[:3]}")
+            print(f"[DEBUG] Reference trajectory shape: {ref_traj.shape}")
+            print(f"[DEBUG] Ref traj first 3 elements (x,y,theta): {ref_traj[:3, 0]}")
         
-        for step in range(max_steps):
-            current_state = executed_states[-1]
+        print(f"\nSimulating controller for {ref_traj.shape[1]} steps...")
+        for step in range(ref_traj.shape[1] - 1):
+            # Compute control from controller
+            control_input = controller.get_command(current_state)
+            executed_controls.append(control_input.copy())
             
-            # Check if reached goal
-            dist_to_goal = np.linalg.norm(current_state[:2] - np.array(self.goal[:2]))
-            if dist_to_goal < goal_threshold:
-                print(f"[OK] Reached goal at step {step}")
-                break
+            # Propagate state using robot simulator
+            current_state = robot_sim.propagate(current_state, control_input)
+            executed_states.append(current_state.copy())
             
-            # Find closest reference point to current position
-            # Compute distances from current position to all reference positions
-            ref_positions = ref_traj[0:2, :]  # Shape: (2, N_traj)
-            current_pos = current_state[0:2]  # Shape: (2,)
-            distances = np.linalg.norm(ref_positions - current_pos[:, np.newaxis], axis=0)  # Shape: (N_traj,)
-            closest_idx = np.argmin(distances)
-            
-            # Use closest index as the start of the rolling window (look ahead some steps)
-            # Don't allow going backward in the trajectory
-            ref_idx = max(ref_idx, closest_idx)
-            
-            # Debug: show current position vs reference position
-            if (step + 1) % 20 == 0:
-                ref_pos_at_idx = ref_traj[0:2, ref_idx]
-                print(f"  Step {step}: robot at ({current_pos[0]:.2f}, {current_pos[1]:.2f}), closest ref idx={closest_idx}, using idx={ref_idx}, ref pos=({ref_pos_at_idx[0]:.2f}, {ref_pos_at_idx[1]:.2f})")
-            
-            # Extract rolling window of reference trajectory (5 steps ahead)
-            ref_end_idx = min(ref_idx + mppi_horizon, ref_traj.shape[1])
-            ref_window_size = ref_end_idx - ref_idx
-            
-            # Pad with goal state if we've used most of the trajectory
-            rolling_ref = np.zeros((ref_traj.shape[0], mppi_horizon))
-            rolling_ref[:, :ref_window_size] = ref_traj[:, ref_idx:ref_end_idx]
-            
-            # Fill remaining steps with goal state (extrapolate)
-            if ref_window_size < mppi_horizon:
-                rolling_ref[:, ref_window_size:] = ref_traj[:, -1:].repeat(mppi_horizon - ref_window_size, axis=1)
-            
-            # Debug output for first few steps
-            if step < 3:
-                print(f"  Step {step}: rolling_ref[0:2,0:3] = {rolling_ref[0:2, :3]}")
-            
-            # Create MPPI controller for this iteration with rolling window
-            mppi_controller = MPPIController(
-                desired_traj=rolling_ref,
-                robot_sim=robot_sim,
-                collision_check_method=lambda state: False,  # DISABLE collision checking for testing
-                N_Horizon=mppi_horizon,
-                lambda_=1.0,
-                myu=20.0,
-                K=50
-            )
-            
-            # Get control command from MPPI
-            try:
-                control = mppi_controller.get_command(current_state)
-                executed_controls.append(control)
-                if (step + 1) % 100 == 0 and np.any(control != 0):
-                    print(f"  Step {step}: control={control[:4]}")
-                elif (step + 1) % 100 == 0:
-                    print(f"  Step {step}: WARNING - zero control!")
-                if (step + 1) % 20 == 0:
-                    print(f"  Step {step}: current_pos=({current_state[0]:.2f}, {current_state[1]:.2f})")
-                    print(f"    ref_idx={ref_idx}, rolling_ref first 3 steps x: {rolling_ref[0, :3]}")
-                    print(f"    control torques={control[:4]}, steering_rates={control[4:]}")
-            except Exception as e:
-                print(f"[ERROR] Error getting control at step {step}: {e}")
-                break
-            
-            # Propagate state
-            try:
-                next_state = robot_sim.propagate(current_state, control)
-                
-                # Check collision - DISABLED FOR TESTING
-                # if self.obstacle_checker.is_collision(tuple(next_state[:3])):
-                #     print(f"[ERROR] Collision detected at step {step}")
-                #     break
-                
-                executed_states.append(next_state)
-                # ref_idx is now computed dynamically from closest point, no need to manually increment
-                
-                if (step + 1) % 10 == 0:
-                    print(f"  Step {step + 1}: pos=({next_state[0]:.2f}, {next_state[1]:.2f}), dist_to_goal={dist_to_goal:.2f}m, ref_idx={ref_idx}")
-            
-            except Exception as e:
-                print(f"[ERROR] Error propagating state at step {step}: {e}")
-                break
+            if (step + 1) % 100 == 0:
+                speed = np.sqrt(current_state[3]**2 + current_state[4]**2)
+                print(f"  Step {step + 1}/{ref_traj.shape[1] - 1}: Position ({current_state[0]:.2f}, {current_state[1]:.2f}), Speed {speed:.3f} m/s")
+        
+        executed_states = np.array(executed_states)
+        executed_controls = np.array(executed_controls)
         
         print(f"[OK] Simulation completed: {len(executed_states)} states")
-        
-        # Calculate and display velocity statistics
-        print(f"\n=== VELOCITY COMPARISON ===")
-        if len(executed_states) > 1:
-            # Calculate actual velocities
-            actual_vx = []
-            actual_vy = []
-            actual_speed = []
-            for i in range(1, len(executed_states)):
-                dx = executed_states[i][0] - executed_states[i-1][0]
-                dy = executed_states[i][1] - executed_states[i-1][1]
-                vx = dx / dt
-                vy = dy / dt
-                speed = np.sqrt(vx**2 + vy**2)
-                actual_vx.append(vx)
-                actual_vy.append(vy)
-                actual_speed.append(speed)
-            
-            # Reference velocities (from trajectory)
-            ref_vx = ref_traj[3, :len(executed_states)-1]
-            ref_vy = ref_traj[4, :len(executed_states)-1]
-            ref_speed = np.sqrt(ref_vx**2 + ref_vy**2)
-            
-            # Statistics
-            print(f"Actual avg speed: {np.mean(actual_speed):.3f} m/s (max: {np.max(actual_speed):.3f})")
-            print(f"Reference avg speed: {np.mean(ref_speed):.3f} m/s (max: {np.max(ref_speed):.3f})")
-            print(f"Speed ratio (actual/reference): {np.mean(actual_speed) / np.mean(ref_speed):.1%}")
-            print(f"\nFirst 10 step comparison (actual vs reference):")
-            print(f"  Step | Actual Speed | Ref Speed | Actual vx | Ref vx")
-            for i in range(min(10, len(actual_speed))):
-                print(f"  {i:3d} | {actual_speed[i]:12.3f} | {ref_speed[i]:9.3f} | {actual_vx[i]:9.3f} | {ref_vx[i]:6.3f}")
-        
         return executed_states, executed_controls
+    
+    def calculate_cross_track_error(self, robot_history, path_points):
+        """
+        Calculates the perpendicular distance from the robot to the path.
+        """
+        path_points = np.array(path_points)
+        cross_track_errors = []
+        
+        for robot_pos in robot_history:
+            rx, ry = robot_pos[0], robot_pos[1]
+            
+            # Find distance to every segment and pick the smallest
+            min_dist = float('inf')
+            
+            for i in range(len(path_points) - 1):
+                p1 = path_points[i][:2] if len(path_points[i]) > 2 else path_points[i]  # Handle both 2D and 3D points
+                p2 = path_points[i+1][:2] if len(path_points[i+1]) > 2 else path_points[i+1]
+                
+                # Distance from point (rx, ry) to line segment p1-p2
+                # Standard "Point to Line Segment" formula
+                p1_p2 = p2 - p1
+                len_sq = np.dot(p1_p2, p1_p2)
+                
+                if len_sq == 0:
+                    dist = np.linalg.norm(np.array([rx, ry]) - p1)
+                else:
+                    t = np.dot(np.array([rx, ry]) - p1, p1_p2) / len_sq
+                    t = np.clip(t, 0, 1)  # Clamp to segment
+                    projection = p1 + t * p1_p2
+                    dist = np.linalg.norm(np.array([rx, ry]) - projection)
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    
+            cross_track_errors.append(min_dist)
+            
+        return np.array(cross_track_errors)
+    
+    def calculate_path_errors(self, robot_history, path_points):
+        """
+        Calculate x, y, and theta errors relative to the closest point on the path.
+        Returns separate error arrays for x, y, and theta.
+        """
+        path_points = np.array(path_points)
+        error_x = []
+        error_y = []
+        error_theta = []
+        
+        for robot_pos in robot_history:
+            rx, ry = robot_pos[0], robot_pos[1]
+            r_theta = robot_pos[2]
+            
+            # Find closest point on path
+            min_dist = float('inf')
+            closest_path_point = None
+            closest_idx = 0
+            
+            for i in range(len(path_points) - 1):
+                p1 = path_points[i][:2] if len(path_points[i]) > 2 else path_points[i]
+                p2 = path_points[i+1][:2] if len(path_points[i+1]) > 2 else path_points[i+1]
+                
+                # Find projection on segment
+                p1_p2 = p2 - p1
+                len_sq = np.dot(p1_p2, p1_p2)
+                
+                if len_sq == 0:
+                    projection = p1
+                    t = 0
+                else:
+                    t = np.dot(np.array([rx, ry]) - p1, p1_p2) / len_sq
+                    t = np.clip(t, 0, 1)
+                    projection = p1 + t * p1_p2
+                
+                dist = np.linalg.norm(np.array([rx, ry]) - projection)
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_path_point = path_points[i] if t < 0.5 else path_points[i+1]
+                    closest_idx = i if t < 0.5 else i+1
+            
+            # Calculate errors
+            px = closest_path_point[0]
+            py = closest_path_point[1]
+            p_theta = closest_path_point[2] if len(closest_path_point) > 2 else 0
+            
+            error_x.append(rx - px)
+            error_y.append(ry - py)
+            
+            # Handle theta wrapping
+            theta_diff = r_theta - p_theta
+            while theta_diff > np.pi:
+                theta_diff -= 2 * np.pi
+            while theta_diff < -np.pi:
+                theta_diff += 2 * np.pi
+            error_theta.append(theta_diff)
+        
+        return np.array(error_x), np.array(error_y), np.array(error_theta)
     
     def visualize(self, path: List[State2D], executed_states: List[np.ndarray], ref_traj: np.ndarray):
         """Visualize planning and control results."""
         print(f"\nVisualizing: {len(executed_states)} executed states")
-        if executed_states:
+        if len(executed_states) > 0:
             print(f"  First state: ({executed_states[0][0]:.2f}, {executed_states[0][1]:.2f})")
             print(f"  Last state: ({executed_states[-1][0]:.2f}, {executed_states[-1][1]:.2f})")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
         
         (x_min, x_max), (y_min, y_max) = self.world_bounds
         
         # --- Plot 1: Path Planning ---
+        ax1 = axes[0, 0]
         ax1.set_xlim(x_min - 1, x_max + 1)
         ax1.set_ylim(y_min - 1, y_max + 1)
         ax1.set_aspect('equal')
@@ -671,6 +699,7 @@ class ControllerTester:
         ax1.grid(True, alpha=0.3)
         
         # --- Plot 2: Controller Execution ---
+        ax2 = axes[0, 1]
         ax2.set_xlim(x_min - 1, x_max + 1)
         ax2.set_ylim(y_min - 1, y_max + 1)
         ax2.set_aspect('equal')
@@ -705,11 +734,33 @@ class ControllerTester:
         ax2.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Trajectory', alpha=0.7)
         
         # Executed trajectory
-        if executed_states:
+        if len(executed_states) > 0:
             exec_x = [state[0] for state in executed_states]
             exec_y = [state[1] for state in executed_states]
             ax2.plot(exec_x, exec_y, 'b-', linewidth=2, label='Executed Trajectory')
             ax2.scatter(exec_x, exec_y, s=10, c='blue', alpha=0.5, zorder=5)
+            
+            # Draw robot rectangles at regular intervals
+            robot_length = self.robot.length
+            robot_width = self.robot.width
+            step_interval = max(1, len(executed_states) // 20)  # Draw ~20 robot rectangles
+            
+            for i in range(0, len(executed_states), step_interval):
+                state = executed_states[i]
+                x, y, theta = state[0], state[1], state[2]
+                
+                # Create rotated rectangle centered at robot position
+                # Rectangle goes from -length/2 to +length/2 in local x, -width/2 to +width/2 in local y
+                rect = patches.Rectangle(
+                    (-robot_length/2, -robot_width/2), robot_length, robot_width,
+                    linewidth=1.5, edgecolor='darkblue', facecolor='cyan', alpha=0.3
+                )
+                
+                # Create transform: rotate and translate
+                t = patches.transforms.Affine2D().rotate_around(0, 0, theta) + patches.transforms.Affine2D().translate(x, y)
+                t += ax2.transData
+                rect.set_transform(t)
+                ax2.add_patch(rect)
         
         # Start and goal
         ax2.scatter(*self.start[:2], s=200, c='green', marker='o', edgecolors='darkgreen', linewidth=2, label='Start', zorder=10)
@@ -720,16 +771,75 @@ class ControllerTester:
         ax2.legend(loc='upper right', fontsize=10)
         ax2.grid(True, alpha=0.3)
         
+        # --- Error Plots ---
+        # Calculate path errors (x, y, theta relative to closest path point)
+        error_x, error_y, error_theta = self.calculate_path_errors(executed_states, path)
+        cross_track_errors = self.calculate_cross_track_error(executed_states, path)
+        time_steps = np.arange(len(executed_states))
+        
+        if self.DEBUG:
+            print(f"\n[DEBUG] Path errors calculated: {len(error_x)} points")
+        
+        # X error plot (top right)
+        ax3 = axes[0, 2]
+        ax3.plot(time_steps, error_x, 'r-', linewidth=2, label='X Error')
+        ax3.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        ax3.fill_between(time_steps, 0, error_x, alpha=0.3, color='red')
+        ax3.set_xlabel('Time Step', fontsize=12)
+        ax3.set_ylabel('Error (meters)', fontsize=12)
+        ax3.set_title('X Position Error vs Path', fontsize=14, fontweight='bold')
+        ax3.grid(True, alpha=0.3)
+        ax3.legend()
+        
+        # Y error plot (bottom left)
+        ax4 = axes[1, 0]
+        ax4.plot(time_steps, error_y, 'b-', linewidth=2, label='Y Error')
+        ax4.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        ax4.fill_between(time_steps, 0, error_y, alpha=0.3, color='blue')
+        ax4.set_xlabel('Time Step', fontsize=12)
+        ax4.set_ylabel('Error (meters)', fontsize=12)
+        ax4.set_title('Y Position Error vs Path', fontsize=14, fontweight='bold')
+        ax4.grid(True, alpha=0.3)
+        ax4.legend()
+        
+        # Theta error plot (bottom middle)
+        ax5 = axes[1, 1]
+        ax5.plot(time_steps, error_theta, 'g-', linewidth=2, label='Theta Error')
+        ax5.axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        ax5.fill_between(time_steps, 0, error_theta, alpha=0.3, color='green')
+        ax5.set_xlabel('Time Step', fontsize=12)
+        ax5.set_ylabel('Error (radians)', fontsize=12)
+        ax5.set_title('Theta (Angle) Error vs Path', fontsize=14, fontweight='bold')
+        ax5.grid(True, alpha=0.3)
+        ax5.legend()
+        
+        # Cross-track error plot (bottom right)
+        ax6 = axes[1, 2]
+        ax6.plot(time_steps, cross_track_errors, 'm-', linewidth=2, label='Cross-Track Error')
+        ax6.fill_between(time_steps, 0, cross_track_errors, alpha=0.3, color='magenta')
+        ax6.set_xlabel('Time Step', fontsize=12)
+        ax6.set_ylabel('Error (meters)', fontsize=12)
+        ax6.set_title('Cross-Track Error (Distance to Path)', fontsize=14, fontweight='bold')
+        ax6.grid(True, alpha=0.3)
+        ax6.legend()
+        
+        # Print path tracking error statistics
+        print(f"\n--- Path Tracking Error Statistics ---")
+        print(f"  X Error - Mean: {np.mean(np.abs(error_x)):.4f}m, Max: {np.max(np.abs(error_x)):.4f}m, RMS: {np.sqrt(np.mean(error_x**2)):.4f}m")
+        print(f"  Y Error - Mean: {np.mean(np.abs(error_y)):.4f}m, Max: {np.max(np.abs(error_y)):.4f}m, RMS: {np.sqrt(np.mean(error_y**2)):.4f}m")
+        print(f"  Theta Error - Mean: {np.mean(np.abs(error_theta)):.4f}rad, Max: {np.max(np.abs(error_theta)):.4f}rad, RMS: {np.sqrt(np.mean(error_theta**2)):.4f}rad")
+        print(f"  Cross-Track Error - Mean: {np.mean(cross_track_errors):.4f}m, Max: {np.max(cross_track_errors):.4f}m, RMS: {np.sqrt(np.mean(cross_track_errors**2)):.4f}m")
+
+        
         plt.tight_layout()
         # Save figure instead of blocking on show()
         plt.savefig('controller_test_result.png', dpi=150, bbox_inches='tight')
         print("Figure saved to controller_test_result.png")
         plt.show()
-    
     def run(self):
         """Run complete controller test."""
         print("=" * 60)
-        print("MPPI CONTROLLER TEST")
+        print("CONTROLLER TEST")
         print("=" * 60)
         
         # Plan path
@@ -741,7 +851,7 @@ class ControllerTester:
         ref_traj = self.generate_trajectory(path)
         
         # Simulate controller
-        executed_states, executed_controls = self.simulate_controller(ref_traj)
+        executed_states, executed_controls = self.simulate_controller(path, ref_traj)
         
         # Visualize
         print("\nVisualizing results...")
@@ -753,7 +863,7 @@ class ControllerTester:
 
 
 def test_controller():
-    """Test MPPI controller with path planning and trajectory generation."""
+    """Test controller with path planning and trajectory generation."""
     tester = ControllerTester()
     tester.run()
 
@@ -784,40 +894,10 @@ def show_menu():
 
 
 if __name__ == "__main__":
-    while True:
-        choice = show_menu()
-        
-        if choice == '0':
-            print("Exiting...")
-            break
-        elif choice == '1':
-            try:
-                test_planner()
-            except Exception as e:
-                print(f"\n✗ Error during planner testing: {e}")
-                import traceback
-                traceback.print_exc()
-        elif choice == '2':
-            try:
-                test_collision_detection()
-            except Exception as e:
-                print(f"\n✗ Error during collision detection testing: {e}")
-                import traceback
-                traceback.print_exc()
-        elif choice == '3':
-            try:
-                test_controller()
-            except Exception as e:
-                print(f"\n✗ Error during controller testing: {e}")
-                import traceback
-                traceback.print_exc()
-        elif choice == '4':
-            try:
-                test_planner()
-                test_collision_detection()
-                test_controller()
-            except Exception as e:
-                print(f"\n✗ Error during testing: {e}")
-                import traceback
-                traceback.print_exc()
+    try:
+        test_controller()
+    except Exception as e:
+        print(f"\n✗ Error during controller testing: {e}")
+        import traceback
+        traceback.print_exc()
 
