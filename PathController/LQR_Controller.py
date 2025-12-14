@@ -9,9 +9,7 @@ from typing import List
 
 class LQRController(Controller):
     def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower, Q: List[float], R: List[float], lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1):
-        self.actuator: ActuatorController = robot_controller
-        self.path_follower: ProjectedPathFollower = path_follower
-        
+        super().__init__(robot_controller, path_follower)        
         # Tuning Parameters # TODO: from parameters
         self._lookahead: float = lookahead  # meters
         self._v_desired: float = v_desired  # m/s
@@ -32,8 +30,9 @@ class LQRController(Controller):
         # 3. Solve Riccati
         P = scipy.linalg.solve_continuous_are(self.A, self.B, self.Q, self.R)
         self.K = np.linalg.inv(self.R) @ self.B.T @ P
+        print(f"[LQR] Gain Matrix K:\n{self.K}")
 
-    def get_command(self, state: State_Vector) -> Control_Vector:
+    def get_command(self, state: State_Vector, debug: bool = False) -> Control_Vector:
         # --- 1. State Conversion (Robot -> Global) ---
         x, y, theta = state[0], state[1], state[2]
         vx_R, vy_R, v_theta = state[3], state[4], state[5]
@@ -54,7 +53,7 @@ class LQRController(Controller):
 
         # u_global = [ax_G, ay_G, alpha_accel]
         u_global = -self.K @ error
-
+       
         # --- 3.5. Acceleration Limiting ---
         # Clip accelerations to physically achievable limits
         max_lin = self.actuator.max_linear_accel * 0.9  # 90% safety margin
@@ -75,6 +74,14 @@ class LQRController(Controller):
         # We rotate the linear acceleration vector by -theta.
         ax_G, ay_G, alpha_cmd = u_global
         
+         
+        if debug:
+            print(f"[LQR] Current State (Global): {current_state_global}")
+            print(f"[LQR] Reference State: {ref_state}")
+            print(f"[LQR] State Error: {error}")
+            print(f"[LQR] Acceleration Components: ax_G={ax_G}, ay_G={ay_G}, alpha_cmd={alpha_cmd}")
+
+        
         # Rotation Matrix Transpose (Global to Robot)
         # [ c  s ]
         # [ -s c ]
@@ -93,4 +100,3 @@ class LQRController(Controller):
         control_vec[4:8] = deltas  # Delta 1-4
         
         return control_vec
-

@@ -5,6 +5,7 @@ Tests the Planning algorithms and Controller with the robot's map and obstacle d
 
 import sys
 from pathlib import Path
+import time
 
 # Add parent directory to path so imports work
 sys.path.insert(0, str(Path(__file__).parent))
@@ -440,54 +441,10 @@ class ControllerTester:
         return path
     
     def generate_trajectory(self, path: List[State2D]) -> np.ndarray:
-        """Generate reference trajectory from path."""
-        control_config = self.params.get("Control", {})
-        mppi_config = control_config.get("MPPI", {})
-        lqr_config = control_config.get("LQR", {})
-        
-        dt = mppi_config.get("dt", 0.1)  # Use same dt as simulation
-        # Calculate horizon needed to traverse the entire path
-        # Path length estimate: sum of distances between waypoints
-        path_length = 0.0
-        for i in range(len(path) - 1):
-            dx = path[i+1][0] - path[i][0]
-            dy = path[i+1][1] - path[i][1]
-            path_length += (dx**2 + dy**2)**0.5
-        
-        # Use actual controller velocity instead of max velocity
-        v_desired = lqr_config.get("v_desired", 2.0)  # m/s
-        # Account for obstacle-aware velocity scaling - robot may move at min_velocity_scale (20%) near obstacles
-        # Use a conservative average velocity estimate (30% of desired) to ensure enough simulation time
-        min_velocity_scale = 0.2  # From PathReference default
-        avg_velocity_estimate = v_desired * 0.3  # Conservative: assume 30% average speed due to obstacles
-        time_to_goal = path_length / avg_velocity_estimate  # seconds
-        horizon = int(time_to_goal / dt) + 100  # Add 100 extra steps as buffer
-        horizon = max(horizon, 500)  # At least 500 steps
-        
-        print(f"  Path length: {path_length:.2f}m, time to goal: {time_to_goal:.2f}s, horizon: {horizon}")
-        
-        traj_gen = TrajectoryGenerator(dt=dt, horizon=horizon, max_velocity=v_desired)
-        
-        # Initial state: start position with zero velocity
-        current_state = np.array([self.start[0], self.start[1], self.start[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        
-        print(f"\nGenerating reference trajectory (horizon={horizon}, dt={dt}, total_time={horizon*dt}s)...")
-        ref_traj = traj_gen.get_reference_trajectory(current_state, path)
-        
-        print(f"[OK] Reference trajectory shape: {ref_traj.shape}")
-        print(f"  Ref positions (first 5): {ref_traj[:2, :5]}")
-        print(f"  Ref velocities (first 5): {ref_traj[3:6, :5]}")
-        print(f"  Ref positions (last 5): {ref_traj[:2, -5:]}")
-        print(f"  Ref velocities (last 5): {ref_traj[3:6, -5:]}")
-        
-        # Debug: Check path endpoints vs original goal
-        print(f"\n[DEBUG] Path endpoint check:")
-        print(f"  Original goal: ({self.goal[0]:.2f}, {self.goal[1]:.2f})")
-        print(f"  Path last point: ({path[-1][0]:.2f}, {path[-1][1]:.2f})")
-        print(f"  Trajectory final position: ({ref_traj[0, -1]:.2f}, {ref_traj[1, -1]:.2f})")
-        
-        return ref_traj
-    
+        """Return the path as a (3, N) array for plotting as the reference trajectory."""
+        arr = np.array(path).T  # shape (3, N)
+        return arr
+
     def simulate_controller(self, path, ref_traj: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """Simulate MPPI controller following reference trajectory with rolling horizon."""
         # Debug: Check path endpoint
@@ -495,6 +452,13 @@ class ControllerTester:
         print(f"  Original goal: ({self.goal[0]:.4f}, {self.goal[1]:.4f})")
         print(f"  Path last point: ({path[-1][0]:.4f}, {path[-1][1]:.4f})")
         
+        # Ensure path ends exactly at the intended goal (prevent small shifts)
+        try:
+            path[-1] = (self.goal[0], self.goal[1], self.goal[2])
+        except Exception:
+            pass
+        # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
+
         # Create Controller
         controller_params = self.params["Control"]
         controller_type_str = controller_params["Controller"]["type"]
@@ -509,7 +473,10 @@ class ControllerTester:
         robot_sim = Robot_Sim(self.actuator_controller, self.robot, dt=dt)
         path_follower = ProjectedPathFollower(path_points=path, obstacle_checker=self.obstacle_checker)
         if controller_type == ControllerTypes.LQR:
-            lookahead: float = controller_params["lookahead"]
+            # Use a reduced lookahead for the LQR to keep references closer
+            # This helps avoid large overshoots when approaching the final goal.
+            lookahead_config: float = controller_params["lookahead"]
+            lookahead: float = float(lookahead_config) * 0.5
             v_desired: float = controller_params["v_desired"]
             dt: float = controller_params["dt"]
             Q = controller_params["Q"]
@@ -541,11 +508,15 @@ class ControllerTester:
         
         if self.DEBUG:
             print(f"\n[DEBUG] Initial state: {initial_state[:3]}")
-            print(f"[DEBUG] Reference trajectory shape: {ref_traj.shape}")
-            print(f"[DEBUG] Ref traj first 3 elements (x,y,theta): {ref_traj[:3, 0]}")
+            print(f"[DEBUG] Reference path shape: {ref_traj.shape}")
+            print(f"[DEBUG] Ref path first 3 elements (x,y,theta): {ref_traj[:3, 0]}")
         
-        print(f"\nSimulating controller for {ref_traj.shape[1]} steps...")
-        for step in range(ref_traj.shape[1] - 1):
+        dt_sim = controller_params["dt"]
+        max_time = 15.0  # seconds (real wall-clock time)
+        step = 0
+        start_time = time.time()
+        print(f"\nSimulating controller (real-time timeout: {max_time}s, dt: {dt_sim})...")
+        while True:
             # Get reference state from path follower for debugging
             ref_state = controller.path_follower.get_reference_state(
                 np.array([current_state[0], current_state[1], current_state[2]]), 
@@ -553,18 +524,26 @@ class ControllerTester:
                 controller._v_desired
             )
             reference_states.append(ref_state.copy())
-            
             # Compute control from controller
             control_input = controller.get_command(current_state)
             executed_controls.append(control_input.copy())
-            
             # Propagate state using robot simulator
             current_state = robot_sim.propagate(current_state, control_input)
             executed_states.append(current_state.copy())
-            
+            # Check stabilization
+            if controller.is_stabilized(current_state):
+                print(f"[OK] Controller stabilized at step {step+1} (sim t={dt_sim*(step+1):.2f}s, real t={time.time()-start_time:.2f}s)")
+                break
+            # Check real wall-clock timeout
+            if (time.time() - start_time) > max_time:
+                print(f"[TIMEOUT] Simulation stopped after {max_time} seconds real time at step {step+1} (sim t={dt_sim*(step+1):.2f}s)")
+                break
             if (step + 1) % 100 == 0:
                 speed = np.sqrt(current_state[3]**2 + current_state[4]**2)
-                print(f"  Step {step + 1}/{ref_traj.shape[1] - 1}: Position ({current_state[0]:.2f}, {current_state[1]:.2f}), Speed {speed:.3f} m/s")
+                print(f"  Step {step + 1}: Position ({current_state[0]:.2f}, {current_state[1]:.2f}), Speed {speed:.3f} m/s, Heading {math.degrees(current_state[2]):.2f}°, torques: {control_input[:4]}")
+                if control_input[0] < 1e-3 and control_input[1] < 1e-3 and control_input[2] < 1e-3 and control_input[3] < 1e-3:
+                    controller.get_command(current_state, debug=True)
+            step += 1
         
         executed_states = np.array(executed_states)
         executed_controls = np.array(executed_controls)
@@ -716,9 +695,10 @@ class ControllerTester:
                 ax1.add_patch(polygon)
         
         # Reference trajectory
+        # Reference trajectory (now just the path for LQR/MRAC)
         ref_x = ref_traj[0, :]
         ref_y = ref_traj[1, :]
-        ax1.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Trajectory', alpha=0.7)
+        ax1.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Path', alpha=0.7)
         
         # Executed trajectory
         if len(executed_states) > 0:

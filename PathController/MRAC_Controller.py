@@ -12,8 +12,7 @@ class MRACController(Controller):
     def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower, 
                  lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
                  gamma: float = 0.5, kp: float = 8.0, kv: float = 4.0):
-        self.actuator: ActuatorController = robot_controller
-        self.path_follower: ProjectedPathFollower = path_follower
+        super().__init__(robot_controller, path_follower)        
         
         self._lookahead: float = lookahead  # meters
         self._v_desired: float = v_desired  # m/s
@@ -31,7 +30,7 @@ class MRACController(Controller):
         
         self._initialized: bool = False
 
-    def get_command(self, state: State_Vector) -> Control_Vector:
+    def get_command(self, state: State_Vector, debug: bool = False) -> Control_Vector:
         # --- 1. State Conversion (Robot -> Global) ---
         x, y, theta = state[0], state[1], state[2]
         vx_R, vy_R, v_theta = state[3], state[4], state[5]
@@ -68,7 +67,8 @@ class MRACController(Controller):
         real_pos_err[2] = (real_pos_err[2] + np.pi) % (2 * np.pi) - np.pi # Angle wrap
         # real_pos_err[2] *= 0.1  # Reduce yaw error influence
         
-        u_nominal = -self._kp * real_pos_err - self._kv * (current_global[3:6] - ref[3:6])
+        vel_error = current_global[3:6] - ref[3:6]
+        u_nominal = -self._kp * real_pos_err - self._kv * vel_error
 
         # Apply Adaptive Gain
         u_global = u_nominal * self.alpha_hat
@@ -94,7 +94,9 @@ class MRACController(Controller):
         pos_err_model = self.xm[:3] - ref[:3]
         pos_err_model[2] = (pos_err_model[2] + np.pi) % (2 * np.pi) - np.pi
         
-        acc_model = -self._kp * pos_err_model - self._kv * (self.xm[3:6] - ref[3:6])
+        vel_error_model = self.xm[3:6] - ref[3:6]
+        
+        acc_model = -self._kp * pos_err_model - self._kv * vel_error_model
         
         # Integrate Model
         self.xm[3:6] += acc_model * self._dt
@@ -103,6 +105,14 @@ class MRACController(Controller):
         # --- 8. Frame Rotation (Global -> Robot) ---
         # The ActuatorController needs accelerations in the ROBOT frame.
         ax_G, ay_G, alpha_cmd = u_global
+        
+          
+        if debug:
+            print(f"[MRAC] Current State (Global): {current_global}")
+            print(f"[MRAC] Reference State: {ref}")
+            print(f"[MRAC] State Pos Error: {real_pos_err}")
+            print(f"[MRAC] State Vel Error: {vel_error}")
+            print(f"[MRAC] Acceleration Components: ax_G={ax_G}, ay_G={ay_G}, alpha_cmd={alpha_cmd}")
         
         # Rotation Matrix Transpose (Global to Robot)
         ax_R = c * ax_G + s * ay_G

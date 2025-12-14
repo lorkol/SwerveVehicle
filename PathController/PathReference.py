@@ -181,7 +181,18 @@ class ProjectedPathFollower:
         ref_v_theta = kappa * scaled_v_desired
 
         # --- Standard Position/Velocity Calculation ---
-        ref_pos = best_point + tangent1 * lookahead_dist
+        # Compute lookahead reference but clamp it so it does not go past
+        # the end of the final segment (prevents reference being beyond goal).
+        if best_idx + 1 >= len(self.path) - 1:
+            # We're on the final segment - ensure we don't overshoot the goal
+            goal_pt = self.path[-1][:2]
+            remaining = np.dot(goal_pt - best_point, tangent1)
+            remaining = max(0.0, remaining)
+            lookahead_use = min(lookahead_dist, remaining)
+            ref_pos = best_point + tangent1 * lookahead_use
+        else:
+            ref_pos = best_point + tangent1 * lookahead_dist
+
         ref_theta = np.arctan2(tangent1[1], tangent1[0])
         ref_vel = tangent1 * scaled_v_desired
 
