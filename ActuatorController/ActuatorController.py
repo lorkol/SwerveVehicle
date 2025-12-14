@@ -144,12 +144,14 @@ class ActuatorController:
         
         Args:
             state: Current state [x, y, theta, vx_R, vy_R, v_theta, d1, d2, d3, d4]
-            wheel_angles: Steering angles of the wheels [delta1, delta2, delta3, delta4]
+            wheel_angles: Steering angles of the wheels [delta1, delta2, delta3, delta4] in robot frame
             wheel_torques: Torques applied at each wheel [tau1, tau2, tau3, tau4]
             
         Returns:
             a_G: Accelerations in global frame [ax_G, ay_G, a_theta]
         """
+        # Wheel angles are measured in ROBOT frame (relative to robot body)
+        # They are NOT affected by robot's global orientation theta
         robot_accels = self.get_accels(wheel_angles, wheel_torques)
         x, y, theta, vx_R, vy_R, v_theta = state[:6]
         ax_R, ay_R, a_theta = robot_accels

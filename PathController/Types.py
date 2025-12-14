@@ -15,7 +15,7 @@ STATE_SIZE = 10
 Control_Vector: TypeAlias = np.ndarray
 '''Represents control inputs for the swerve drive robot: (8,1)\n
     - Tau1, Tau2, Tau3, Tau4: Torques applied at each wheel\n
-    - Delta_dot1, Delta_dot2, Delta_dot3, Delta_dot4: Steering angular velocities for each wheel
+    - Delta1, Delta2, Delta3, Delta4: Steering angle for each wheel
 '''
 CONTROL_SIZE = 8
 

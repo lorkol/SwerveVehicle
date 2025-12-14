@@ -43,7 +43,7 @@ class Robot_Sim:
         
         Args:
             state: Current state [x, y, theta, vx, vy, omega, d1, d2, d3, d4]
-            control_input: Control inputs [tau1, tau2, tau3, tau4, v_d1, v_d2, v_d3, v_d4]
+            control_input: Control inputs [tau1, tau2, tau3, tau4, d1, d2, d3, d4]
             
         Returns:
             Updated state after dt seconds
@@ -52,7 +52,7 @@ class Robot_Sim:
         x, y, theta, vx, vy, omega, d1, d2, d3, d4 = state
         
         # Get wheel angles and torques from control input
-        wheel_angles: np.ndarray = np.array([d1, d2, d3, d4])
+        wheel_angles: np.ndarray = np.array(control_input[4:8])
         wheel_torques: np.ndarray = np.array(control_input[:4])
         
         # Calculate accelerations from actuator controller
@@ -69,22 +69,8 @@ class Robot_Sim:
         vy_new: float = vy + a_y * self._dt
         omega_new: float = omega + alpha * self._dt
         
-        # Update wheel angles using wheel velocity commands
-        # d_new = d_old + v_d * dt
-        wheel_velocities: np.ndarray = np.array(control_input[4:8])
-        d1_new: float = d1 + wheel_velocities[0] * self._dt
-        d2_new: float = d2 + wheel_velocities[1] * self._dt
-        d3_new: float = d3 + wheel_velocities[2] * self._dt
-        d4_new: float = d4 + wheel_velocities[3] * self._dt
-        
-        # CRITICAL FIX: Normalize wheel angles to [-π, π] range
-        # This prevents angle accumulation and ensures consistent force calculations
-        # Use atan2 to properly wrap angles
-        d1_new = np.arctan2(np.sin(d1_new), np.cos(d1_new))
-        d2_new = np.arctan2(np.sin(d2_new), np.cos(d2_new))
-        d3_new = np.arctan2(np.sin(d3_new), np.cos(d3_new))
-        d4_new = np.arctan2(np.sin(d4_new), np.cos(d4_new))
-        
+        d1_new, d2_new, d3_new, d4_new = wheel_angles  # Directly set to commanded angles
+                
         # Construct and return new state
         new_state: State_Vector = np.array([x_new, y_new, theta_new, vx_new, vy_new, omega_new, d1_new, d2_new, d3_new, d4_new])
         self._state = new_state
