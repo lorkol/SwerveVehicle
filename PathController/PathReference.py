@@ -6,7 +6,7 @@ class ProjectedPathFollower:
         # Convert to numpy array for fast math
         # Expects points as [x, y] or [x, y, theta]
         self.path = np.array(path_points)
-        self.last_idx: int = 0 
+        self.last_idx: int = 0
         
     def get_reference_state(self, current_pos: np.ndarray, lookahead_dist: float, v_desired: float) -> np.ndarray:
         """
@@ -15,13 +15,14 @@ class ProjectedPathFollower:
         """
         
         # 1. Find Closest Point on Path Segment
-        # We search a window around the last known index to be efficient
+        # Key: progress is MONOTONIC - only search forward from last_idx
+        # This ensures we always move toward the goal, never backward
         search_window = 10
-        start_search = self.last_idx
+        start_search = self.last_idx  # Only search forward
         end_search = min(self.last_idx + search_window, len(self.path) - 1)
         
         min_dist = float('inf')
-        best_point = self.path[self.last_idx][:2]  # Extract 2D coordinates
+        best_point = self.path[self.last_idx][:2]
         best_idx = self.last_idx
 
         for i in range(start_search, end_search):
@@ -30,23 +31,40 @@ class ProjectedPathFollower:
             
             proj, t = self._project_on_segment(current_pos, p1, p2)
             dist = np.linalg.norm(proj - current_pos)
-            # TODO: check collision between current_pos and proj
             
             if dist < min_dist:
                 min_dist = dist
                 best_point = proj
                 best_idx = i
+        
+        # Advance logic: if we've passed the current segment (t > 0.9), move to next
+        # This ensures monotonic progress even when off-path
+        if best_idx < len(self.path) - 2:
+            _, t = self._project_on_segment(current_pos, self.path[best_idx], self.path[best_idx + 1])
+            if t > 0.9:  # Passed 90% of segment
+                best_idx = min(best_idx + 1, len(self.path) - 2)
+                best_point, _ = self._project_on_segment(current_pos, self.path[best_idx], self.path[best_idx + 1])
 
-        self.last_idx = best_idx
+        # Ensure we never go backward
+        self.last_idx = max(self.last_idx, best_idx)
+        best_idx = self.last_idx
+        
+        # Re-project onto current segment
+        best_point, _ = self._project_on_segment(current_pos, self.path[best_idx], self.path[best_idx + 1])
         
         # Check if we're at the end of the path
         goal_point = self.path[-1][:2]
         goal_theta = self.path[-1][2] if len(self.path[-1]) > 2 else 0.0
         dist_to_goal = np.linalg.norm(current_pos[:2] - goal_point)
         
-        # If close to goal or past the last segment, return goal state with zero velocity
-        if best_idx >= len(self.path) - 2 and dist_to_goal < lookahead_dist * 2:
-            # Return goal position with zero velocities (stop at goal)
+        # Goal mode: when on last segment, always target the goal
+        # This ensures the robot reaches the goal even if it overshoots
+        on_last_segment = best_idx >= len(self.path) - 2
+        
+        if on_last_segment:
+            # Return goal position with goal theta and ZERO velocity reference
+            # This lets position error fully drive the robot to goal
+            # The LQR will naturally slow down as it approaches due to the position error shrinking
             return np.array([goal_point[0], goal_point[1], goal_theta, 0.0, 0.0, 0.0])
         
         # Get Current Segment Tangent

@@ -120,6 +120,13 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
             for i in range(len(new_x)):
                 smoothed_path.append((new_x[i], new_y[i], new_theta[i])) # type: ignore
             
+            # IMPORTANT: Force start and goal to be exact original positions
+            # B-spline with s > 0 approximates but doesn't pass through points exactly
+            original_start = unique_points[0]
+            original_goal = unique_points[-1]
+            smoothed_path[0] = (original_start[0], original_start[1], smoothed_path[0][2])
+            smoothed_path[-1] = (original_goal[0], original_goal[1], original_goal[2])
+            
             # Check collisions before accepting this strategy
             has_collision = False
             for i in range(len(smoothed_path) - 1):
@@ -202,9 +209,17 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
     
     if downsampled is None or successful_factor is None:
         print(f"Warning: All downsampling factors failed, returning smoothed path with {len(smoothed)} waypoints (no downsampling)")
-        return smoothed
+        result = smoothed
+    else:
+        if successful_strategy:
+            print(f"Final path: {len(smoothed)} waypoints smoothed -> {len(downsampled)} waypoints downsampled (factor {successful_factor})")
+        result = downsampled
     
-    if successful_strategy:
-        print(f"Final path: {len(smoothed)} waypoints smoothed -> {len(downsampled)} waypoints downsampled (factor {successful_factor})")
+    # CRITICAL: Guarantee the path ends at the exact original goal position
+    # B-spline smoothing and downsampling can shift the endpoint slightly
+    original_start = path[0]
+    original_goal = path[-1]
+    result[0] = (original_start[0], original_start[1], result[0][2])
+    result[-1] = (original_goal[0], original_goal[1], original_goal[2])
     
-    return downsampled
+    return result
