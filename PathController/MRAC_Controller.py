@@ -30,11 +30,9 @@ class MRACController(Controller):
     def get_command(self, state: State_Vector, debug: bool = False) -> Control_Vector:
         # --- 1. State Conversion (Robot -> Global) ---
         x, y, theta = state[0], state[1], state[2]
-        vx_R, vy_R, v_theta = state[3], state[4], state[5]
+        vx_G, vy_G, v_theta = state[3], state[4], state[5]
         
         c, s = np.cos(theta), np.sin(theta)
-        vx_G = c * vx_R - s * vy_R
-        vy_G = s * vx_R + c * vy_R
         current_global = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
         # --- 2. Initialization Safety ---

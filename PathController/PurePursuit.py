@@ -41,7 +41,6 @@ class PurePursuitController(LocalPlanner):
             Note: The Next step in the Cascading Controller will ignore x_carrot/y_carrot because you mask them,
             but we return them for visualization/debug.
         """
-        
         rx, ry = current_pose[0], current_pose[1]
 
         # --- 1. Find the Lookahead Point (Carrot) ---
@@ -83,6 +82,11 @@ class PurePursuitController(LocalPlanner):
         best_idx: int = self._last_index
         best_point: NP3DPoint = np.array(self.path[self._last_index])
         found_intersection: bool = False
+        final_point = self.path[-1]
+        dist_to_end = np.hypot(final_point[0] - rx, final_point[1] - ry)
+        
+        if dist_to_end < L:
+            return len(self.path) - 1, final_point
 
         # Iterate through path segments
         for i in range(self._last_index, end_search - 1):
@@ -98,7 +102,7 @@ class PurePursuitController(LocalPlanner):
                 found_intersection = True
                 best_idx = i
                 best_point = intersections[-1] # List is sorted by distance from p1
-                
+                print(f"[PurePursuit] Intersection found at segment {i}: {intersections}, best_idx: {best_idx}, best_point: {best_point}")
         # Fallback: If no intersection found (too far or too close)
         if not found_intersection:
             # Check distance to the last point we found
