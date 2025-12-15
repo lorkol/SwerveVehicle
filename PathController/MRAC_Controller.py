@@ -33,6 +33,8 @@ class MRACController(Controller):
         vx_G, vy_G, v_theta = state[3], state[4], state[5]
         
         c, s = np.cos(theta), np.sin(theta)
+        # vx_G = c * vx_R - s * vy_R
+        # vy_G = s * vx_R + c * vy_R
         current_global = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
         # --- 2. Initialization Safety ---

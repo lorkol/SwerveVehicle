@@ -29,7 +29,7 @@ class PurePursuitController(LocalPlanner):
         
                   
         
-    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+    def get_reference_state(self, current_pose: NP3DPoint, debug: bool = False) -> State6D:
         """
         Calculates the 6D Reference State for the LQR Controller.
         
@@ -44,7 +44,8 @@ class PurePursuitController(LocalPlanner):
         rx, ry = current_pose[0], current_pose[1]
 
         # --- 1. Find the Lookahead Point (Carrot) ---
-        carrot_idx, carrot_point = self._find_lookahead_point(rx, ry, self._lookahead)
+        carrot_idx, carrot_point = self._find_lookahead_point(rx, ry, self._lookahead, debug)
+        if debug: print(f"[PurePursuit] Current pose: {current_pose}, Carrot idx: {carrot_idx}, Carrot point: {carrot_point}")
         
         # Update index so we don't search behind us next time
         self._last_index = carrot_idx
@@ -54,6 +55,7 @@ class PurePursuitController(LocalPlanner):
         dx = carrot_point[0] - rx
         dy = carrot_point[1] - ry
         dist = np.hypot(dx, dy)
+        if debug: print(f"[PurePursuit] dx: {dx}, dy: {dy}, dist: {dist}")
 
         if dist > 1e-3:
             # Scale vector to desired speed
@@ -70,9 +72,11 @@ class PurePursuitController(LocalPlanner):
 
         # --- 4. Construct Reference State ---
         # [x_ref, y_ref, theta_ref, vx_ref, vy_ref, vtheta_ref=0.0]
-        return np.array([carrot_point[0], carrot_point[1], carrot_point[2], vx_ref, vy_ref, 0.0])
+        ref_state = np.array([carrot_point[0], carrot_point[1], carrot_point[2], vx_ref, vy_ref, 0.0])
+        if debug: print(f"[PurePursuit] Reference state: {ref_state}")
+        return ref_state
 
-    def _find_lookahead_point(self, rx: float, ry: float, L: float) -> Tuple[int, np.ndarray]:
+    def _find_lookahead_point(self, rx: float, ry: float, L: float, debug: bool = False) -> Tuple[int, np.ndarray]:
         """
         Finds the furthest point on the path that intersects the lookahead circle.
         """
@@ -102,16 +106,16 @@ class PurePursuitController(LocalPlanner):
                 found_intersection = True
                 best_idx = i
                 best_point = intersections[-1] # List is sorted by distance from p1
-                print(f"[PurePursuit] Intersection found at segment {i}: {intersections}, best_idx: {best_idx}, best_point: {best_point}")
+                if debug: print(f"[PurePursuit] Intersection found at segment {i}: {intersections}, best_idx: {best_idx}, best_point: {best_point}")
         # Fallback: If no intersection found (too far or too close)
         if not found_intersection:
             # Check distance to the last point we found
             dist_to_current: float = np.hypot(self.path[self._last_index][0] - rx, self.path[self._last_index][1] - ry)
-            
-            if dist_to_current > L:
+            if debug: print(f"[PurePursuit] No intersection found. dist_to_current: {dist_to_current}, L: {L}")
+            if dist_to_current > L and debug:
                 # We are too far away -> Cut inward to the nearest point (Survival mode)
                 # Or just keep the current target (Wait for it)
-                pass 
+                print(f"[PurePursuit] Too far from path, keeping current target at index {self._last_index}")
             else:
                 # We are closer than L -> Look forward for the first point outside L
                 for i in range(self._last_index, end_search):
@@ -120,8 +124,9 @@ class PurePursuitController(LocalPlanner):
                     if d > L:
                         best_idx = i
                         best_point = p
+                        if debug: print(f"[PurePursuit] Found first point outside L at index {i}: {p}")
                         break
-                        
+        if debug: print(f"[PurePursuit] Returning best_idx: {best_idx}, best_point: {best_point}")
         return best_idx, best_point
 
     def _circle_segment_intersection(self, p1: NP3DPoint, p2: NP3DPoint, rx: float, ry: float, r: float) -> List[NP3DPoint]:

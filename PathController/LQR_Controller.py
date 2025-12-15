@@ -40,6 +40,8 @@ class LQRController(Controller):
 
         # Rotate velocities to global frame for LQR
         c, s = np.cos(theta), np.sin(theta)
+        # vx_G: float = c * vx_R - s * vy_R
+        # vy_G: float = s * vx_R + c * vy_R
         
         current_state_global: State6D = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
@@ -110,11 +112,14 @@ class LQRController(Controller):
         control_vec[4:8] = deltas
         
         if debug:
-            print(f"[LQR] Current State (Global): {current_state_global}")
+            print(f"[LQR] Robot State (Global): {current_state_global}")
+            print(f"[LQR] Carrot State: {carrot_state}")
             print(f"[LQR] Reference State: {ref_state}")
             print(f"[LQR] State Error: {error}")
-            print(f"[LQR] Acceleration Components: ax_G={ax_G}, ay_G={ay_G}, alpha_cmd={alpha_cmd}")
-            
+            print(f"[LQR] Control Output (u_global): {u_global}")
+            print(f"[LQR] Control Output (Robot Frame): {u_robot}")
+            print(f"[LQR] Torques: {torques}, Deltas: {deltas}")
+        
         return control_vec
 
     def is_stabilized(self, current_state: State6D, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:

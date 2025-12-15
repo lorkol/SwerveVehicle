@@ -1,6 +1,7 @@
 import time
 import math
 import numpy as np
+import sys
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -25,7 +26,7 @@ from Scene.Robot import Robot
 
 from Types import PathType, ConvexShape
 
-from PathPlanning.Planners import Planner
+from PathPlanning.Planners import Planner, smooth_path
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
 from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
@@ -100,7 +101,7 @@ class ControllerTester:
         if path is None:
             print("❌ No path found!")
             return None
-        
+        path = smooth_path(path, self.obstacle_checker, downsample_factor=1)
         print(f"[OK] Path found with {len(path)} waypoints")
         return path
     
@@ -167,6 +168,9 @@ class ControllerTester:
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
         
+        # Get stabilization radius from parameters (default 1.0)
+        stabilization_radius = self.params.get("Control", {}).get("StabilizationRadius", 1.0)
+        stabilization_window = 100
         
         # Initial state
         initial_state = np.array([self.start[0], self.start[1], self.start[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -184,7 +188,7 @@ class ControllerTester:
             print(f"[DEBUG] Ref path first 3 elements (x,y,theta): {ref_traj[:3, 0]}")
         
         dt_sim = controller_params["dt"]
-        max_time = 15.0  # seconds (real wall-clock time)
+        max_time = 3  # seconds (real wall-clock time)
         step = 0
         start_time = time.time()
         print(f"\nSimulating controller (real-time timeout: {max_time}s, dt: {dt_sim})...")
@@ -211,14 +215,23 @@ class ControllerTester:
                                                         self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
             else:
                 noise = 0.0
-            if controller.is_stabilized(current_state + noise):
+            # --- New: Windowed stabilization check ---
+            stabilized_by_window = False
+            if len(executed_states) > stabilization_window:
+                recent_states = np.array(executed_states[-stabilization_window:])
+                dists = np.linalg.norm(recent_states[:, :2] - np.array(self.goal[:2]), axis=1)
+                if np.all(dists < stabilization_radius):
+                    stabilized_by_window = True
+            if controller.is_stabilized(current_state + noise) or stabilized_by_window:
                 print(f"[OK] Controller stabilized at step {step+1} (sim t={dt_sim*(step+1):.2f}s, real t={time.time()-start_time:.2f}s)")
+                if stabilized_by_window:
+                    print(f"[INFO] Stabilization detected: last {stabilization_window} states all within {stabilization_radius}m of goal.")
                 break
             # Check real wall-clock timeout
             if (time.time() - start_time) > max_time:
                 print(f"[TIMEOUT] Simulation stopped after {max_time} seconds real time at step {step+1} (sim t={dt_sim*(step+1):.2f}s)")
                 break
-            if (step + 1) % 100 == 0:
+            if (step + 1) % 1000 == 0:
                 speed = np.sqrt(current_state[3]**2 + current_state[4]**2)
                 print(f"  Step {step + 1}: Position ({current_state[0]:.2f}, {current_state[1]:.2f}), Speed {speed:.3f} m/s, Heading {math.degrees(current_state[2]):.2f}°, torques: {control_input[:4]}")
                 if control_input[0] < 1e-3 and control_input[1] < 1e-3 and control_input[2] < 1e-3 and control_input[3] < 1e-3:
@@ -403,19 +416,61 @@ class ControllerTester:
             # Draw robot rectangles at regular intervals
             robot_length = self.robot_est.length
             robot_width = self.robot_est.width
-            step_interval = max(1, len(executed_states) // 20)  # Draw ~20 robot rectangles
-            
-            for i in range(0, len(executed_states), step_interval):
+            num_total = 200  # total rectangles to draw
+            num_pre90 = 10   # at least 10 before 90% progress
+            # Compute cumulative path length
+            path_points = np.array(path)
+            seg_lengths = np.linalg.norm(path_points[1:, :2] - path_points[:-1, :2], axis=1)
+            cum_lengths = np.concatenate([[0], np.cumsum(seg_lengths)])
+            total_length = cum_lengths[-1]
+
+            def get_progress(x, y):
+                # Find closest segment and fraction along path
+                dists = np.linalg.norm(path_points[:, :2] - np.array([x, y]), axis=1)
+                idx = np.argmin(dists)
+                if idx == len(cum_lengths) - 1:
+                    return 1.0
+                seg_start = path_points[idx, :2]
+                seg_end = path_points[min(idx+1, len(path_points)-1), :2]
+                seg_vec = seg_end - seg_start
+                if np.linalg.norm(seg_vec) < 1e-6:
+                    frac = 0.0
+                else:
+                    frac = np.dot([x, y] - seg_start, seg_vec) / np.dot(seg_vec, seg_vec)
+                    frac = np.clip(frac, 0, 1)
+                length_along = cum_lengths[idx] + frac * (cum_lengths[min(idx+1, len(cum_lengths)-1)] - cum_lengths[idx])
+                return length_along / total_length if total_length > 0 else 0.0
+
+            # Select indices for rectangles
+            indices_pre90 = []
+            indices_post90 = []
+            for i in range(len(executed_states)):
+                x, y = executed_states[i][0], executed_states[i][1]
+                progress = get_progress(x, y)
+                if progress < 0.9:
+                    indices_pre90.append(i)
+                else:
+                    indices_post90.append(i)
+            # Sample at least 10 before 90%, rest after
+            if len(indices_pre90) > 0:
+                step_pre = max(1, len(indices_pre90) // num_pre90)
+                chosen_pre = indices_pre90[::step_pre][:num_pre90]
+            else:
+                chosen_pre = []
+            num_post = num_total - len(chosen_pre)
+            if len(indices_post90) > 0 and num_post > 0:
+                step_post = max(1, len(indices_post90) // num_post)
+                chosen_post = indices_post90[::step_post][:num_post]
+            else:
+                chosen_post = []
+            chosen_indices = sorted(set(chosen_pre + chosen_post))
+            for i in chosen_indices:
                 state = executed_states[i]
                 x, y, theta = state[0], state[1], state[2]
-                
-                # Create rotated rectangle centered at robot position
                 rect = patches.Rectangle(
                     (-robot_length/2, -robot_width/2), robot_length, robot_width,
                     linewidth=1.5, edgecolor='darkblue', facecolor='cyan', alpha=0.3
                 )
-                
-                # Create transform: rotate and translate
                 t = Affine2D().rotate_around(0, 0, theta) + Affine2D().translate(x, y)
                 t += ax1.transData
                 rect.set_transform(t)
@@ -523,6 +578,10 @@ class ControllerTester:
 
 
 if __name__ == "__main__":
+    # # Redirect stdout and stderr to log.txt
+    # log_file = open("log.txt", "w", encoding="utf-8")
+    # sys.stdout = log_file
+    # sys.stderr = log_file
     try:
         tester = ControllerTester()
         tester.run()
@@ -530,4 +589,6 @@ if __name__ == "__main__":
         print(f"\n✗ Error during controller testing: {e}")
         import traceback
         traceback.print_exc()
+    # finally:
+    #     log_file.close()
 
