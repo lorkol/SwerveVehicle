@@ -80,7 +80,7 @@ class ActuatorController:
     
     def get_angles_and_torques(self, accels: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Analytical inverse kinematics: Find steering angles and wheel torques
+        Analytical inverse dynamics: Find steering angles and wheel torques
         given desired accelerations in Robot Frame.
         
         Strategy: Vector Addition (Linear Force + Rotational Force)

@@ -31,6 +31,8 @@ from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
 from typing import Any, Dict, Optional, Tuple
 
+from Uncertainties.uncertainty import add_state_estimation_uncertainty
+
 
 class ControllerTester:
     """Test Planning and Controlling."""
@@ -41,16 +43,23 @@ class ControllerTester:
         self.config: Dict[str, Any] = load_json(config_path)
         self.params: Dict[str, Any] = load_json(params_path)
         
+        noise_params: Dict[str, Any] = self.params["Noise"]
+        self.state_uncertainty: Dict[str, Any] = noise_params["State Estimation Uncertainty"]
         # Create robot and map
-        self.robot = Robot(self.config["Robot"])
+        self.robot_est = Robot(self.config["Robot"])
+        """The Estimation we have of our robot"""
+        self.robot_true = Robot(self.config["Robot"], noise_params["Parameter Uncertainty"])
+        '''True robot - with possible uncertainties'''
+        print(f"mass difference: {self.robot_true.mass - self.robot_est.mass}, inertia difference: {self.robot_true.inertia - self.robot_est.inertia}, wheel radius difference: {self.robot_true.wheel_radius - self.robot_est.wheel_radius}")
         self.map_obj = Map(self.config["Map"])
         self.world_bounds = ((0, self.map_obj.length), (0, self.map_obj.width))
         
         # Create obstacle checker
-        self.obstacle_checker = StaticObstacleChecker(robot=self.robot, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False)
+        self.obstacle_checker = StaticObstacleChecker(robot=self.robot_est, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False)
         
         # Create actuator controller
-        self.actuator_controller = ActuatorController(self.robot)
+        self.actuator_controller_est = ActuatorController(self.robot_est)
+        self.actuator_controller_true = ActuatorController(self.robot_true)
 
         # Define start and goal        
         self.start = (5.0, 5.0, 0.0)
@@ -124,7 +133,7 @@ class ControllerTester:
         controller_params = controller_params[controller_type.value]
         # Create robot simulator
         dt: float = controller_params["dt"]
-        robot_sim = Robot_Sim(self.actuator_controller, self.robot, dt=dt)
+        robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
         path_follower = ProjectedPathFollower(path_points=path, obstacle_checker=self.obstacle_checker)
         if controller_type == ControllerTypes.LQR:
             # Use a reduced lookahead for the LQR to keep references closer
@@ -135,7 +144,7 @@ class ControllerTester:
             dt: float = controller_params["dt"]
             Q = controller_params["Q"]
             R = controller_params["R"]
-            controller: Controller = LQRController(robot_controller= self.actuator_controller, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
+            controller: Controller = LQRController(robot_controller= self.actuator_controller_est, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
         elif controller_type == ControllerTypes.MRAC:
             lookahead: float = controller_params["lookahead"]
             v_desired: float = controller_params["v_desired"]
@@ -145,7 +154,7 @@ class ControllerTester:
             kv: float = controller_params["kv"]
             alpha_min: float = controller_params["alpha_min"]
             alpha_max: float = controller_params["alpha_max"]
-            controller: Controller = MRACController(robot_controller= self.actuator_controller, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+            controller: Controller = MRACController(robot_controller= self.actuator_controller_est, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
         else: #MPPI
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
@@ -176,13 +185,25 @@ class ControllerTester:
             ref_state = controller.path_follower.get_reference_state(np.array([current_state[0], current_state[1], current_state[2]]), lookahead, v_desired) #TODO: If no lookahead in controller, use default
             reference_states.append(ref_state.copy())
             # Compute control from controller
-            control_input = controller.get_command(current_state)
+            if self.state_uncertainty["Enable"]:
+                noise = add_state_estimation_uncertainty(self.state_uncertainty["Position Noise StdDev"], self.state_uncertainty["Orientation Noise StdDev"], 
+                                                         self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
+                measured_state = current_state + noise
+            else:
+                measured_state = current_state.copy()
+                
+            control_input = controller.get_command(measured_state)
             executed_controls.append(control_input.copy())
             # Propagate state using robot simulator
             current_state = robot_sim.propagate(current_state, control_input)
             executed_states.append(current_state.copy())
             # Check stabilization
-            if controller.is_stabilized(current_state):
+            if self.state_uncertainty["Enable"]:
+                noise = add_state_estimation_uncertainty(self.state_uncertainty["Position Noise StdDev"], self.state_uncertainty["Orientation Noise StdDev"], 
+                                                        self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
+            else:
+                noise = 0.0
+            if controller.is_stabilized(current_state + noise):
                 print(f"[OK] Controller stabilized at step {step+1} (sim t={dt_sim*(step+1):.2f}s, real t={time.time()-start_time:.2f}s)")
                 break
             # Check real wall-clock timeout
@@ -372,8 +393,8 @@ class ControllerTester:
                 ax1.arrow(x, y, dx, dy, head_width=0.4, head_length=0.2, fc='orange', ec='darkorange', alpha=0.7, zorder=6)
             
             # Draw robot rectangles at regular intervals
-            robot_length = self.robot.length
-            robot_width = self.robot.width
+            robot_length = self.robot_est.length
+            robot_width = self.robot_est.width
             step_interval = max(1, len(executed_states) // 20)  # Draw ~20 robot rectangles
             
             for i in range(0, len(executed_states), step_interval):

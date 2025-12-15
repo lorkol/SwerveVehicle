@@ -21,7 +21,7 @@ class Robot_Sim:
     def __init__(self, actuator: ActuatorController, robot: Robot, dt: float = 0.1):
         self._state = None
         self._robot: Robot = robot
-        self._actuator_controller: ActuatorController = ActuatorController(robot)
+        self._actuator_controller: ActuatorController = actuator
         # TODO: Get from parameters file
         self._dt: float = dt  # Simulation timestep
         
