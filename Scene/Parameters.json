@@ -63,7 +63,7 @@
                 "v_desired": 2.0,
                 "dt": 0.1,
                 "gamma": 0.1,
-                "kp": 10.0,
+                "kp": 3.0,
                 "kv": 10.0,
                 "alpha_min": 0.5,
                 "alpha_max": 1.5
@@ -122,18 +122,18 @@
     {
         "Parameter Uncertainty":
         {
-            "Enable": false,
-            "mass_uncertainty": 4.0,
-            "inertia_uncertainty": 4.0,
-            "wheel_radius_uncertainty": 0.5
+            "Enable": true,
+            "mass_uncertainty": 0.5,
+            "inertia_uncertainty": 0.5,
+            "wheel_radius_uncertainty": 0.2
         },
         "State Estimation Uncertainty":
         {
-            "Enable": false,
-            "Position Noise StdDev": 0.01,
-            "Orientation Noise StdDev": 0.005,
-            "Linear Velocity Noise StdDev": 0.02,
-            "Angular Velocity Noise StdDev": 0.01
+            "Enable": true,
+            "Position Noise StdDev": 0.1,
+            "Orientation Noise StdDev": 0.05,
+            "Linear Velocity Noise StdDev": 0.2,
+            "Angular Velocity Noise StdDev": 0.1
         },
         "Dynamic Disturbance":
         {
