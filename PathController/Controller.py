@@ -1,10 +1,12 @@
 
 from abc import ABC, abstractmethod
-from PathController.Types import State_Vector, Control_Vector
-from enum import Enum
+from typing import List
+
 import numpy as np
+from PathController.Types import Control_Vector
+from enum import Enum
 from ActuatorController.ActuatorController import ActuatorController
-from PathController.PathReference import ProjectedPathFollower
+from Types import NP3DPoint, State2D, State6D
 
 
 class ControllerTypes(Enum):
@@ -14,21 +16,36 @@ class ControllerTypes(Enum):
     MPPI = "MPPI"
     MPC = "MPC"
     
+class LocalPlannerTypes(Enum):
+    PurePursuit = "PurePursuit"
+    
     
 class Controller(ABC):
-    
-    def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower):
+    def __init__(self, robot_controller: ActuatorController):
         self.actuator: ActuatorController = robot_controller
-        self.path_follower: ProjectedPathFollower = path_follower
     
     @abstractmethod
-    def get_command(self, state: State_Vector, debug: bool = False) -> Control_Vector:
+    def get_command(self, state: State6D, debug: bool = False) -> Control_Vector:
         """Compute cost for a given control sequence."""
         pass
     
-    def is_stabilized(self, current_state: State_Vector, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
+    @abstractmethod
+    def is_stabilized(self, current_state: State6D, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
         """Return True if the robot is close enough to the goal and nearly stopped."""
-        pos_error = np.linalg.norm(current_state[0:3] - self.path_follower.path[-1][0:3])
-        vel_error = np.linalg.norm(current_state[3:6])
+        # return (pos_error < pos_tol) and (vel_error < vel_tol) # type: ignore
+        pass
+    
+    @abstractmethod
+    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+        """Get the reference state for the controller given the current robot pose."""
+        pass
         
-        return (pos_error < pos_tol) and (vel_error < vel_tol) # type: ignore
+class LocalPlanner(ABC):
+    def __init__(self, robot_controller: ActuatorController, path_points: List[State2D]):
+        self.actuator: ActuatorController = robot_controller
+        self.path: np.ndarray = np.array(path_points)  # Convert path to numpy array for fast operations
+        
+    @abstractmethod
+    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+        """Get the reference state for the controller given the current robot pose."""
+        pass

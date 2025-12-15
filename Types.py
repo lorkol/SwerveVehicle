@@ -1,6 +1,7 @@
 
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Tuple, TypeAlias
+import numpy as np
 
 
 Point2D: TypeAlias = Tuple[float, float]
@@ -8,8 +9,14 @@ Point2D: TypeAlias = Tuple[float, float]
 State2D: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
 '''Represents (x, y, theta) the state of the vehicle in 2D space with orientation.'''
 
+NP3DPoint: TypeAlias = np.ndarray  # shape (3,)
+'''A 3D point represented as a numpy array [x, y, theta].'''
+
 PathType: TypeAlias = List[State2D]
 '''A path represented as a list of 2D states (x, y, theta).'''
+
+State6D: TypeAlias = np.ndarray  # shape (6,)
+'''Represents a 6D state vector [x, y, theta, vx, vy, omega].'''
 
 OptionalPathType: TypeAlias = Optional[List[State2D]]
 '''An optional path which can be None.'''

@@ -9,9 +9,10 @@ from matplotlib.transforms import Affine2D
 
 from ActuatorController.ActuatorController import ActuatorController
 
+from PathController.PurePursuit import PurePursuitController
 from PathController.Robot_Sim import Robot_Sim
 from PathController.MPPI.MPPI_Controller import MPPIController
-from PathController.Controller import Controller, ControllerTypes
+from PathController.Controller import Controller, ControllerTypes, LocalPlanner, LocalPlannerTypes
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
 from PathController.PathReference import ProjectedPathFollower
@@ -123,39 +124,46 @@ class ControllerTester:
         # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
 
         # Create Controller
-        controller_params = self.params["Control"]
+        controller_params: Dict[str, Any] = self.params["Control"]
+        controller_params = controller_params["Cascading Controllers"] # TODO: Currently only using this, add a way to choose
+        local_planner_params: Dict[str, Any] = controller_params["LocalPlanner"]
+        local_planner_str = local_planner_params["type"]
         controller_type_str = controller_params["Controller"]["type"]
         try:
             controller_type = ControllerTypes(controller_type_str)
+            local_planner_type = LocalPlannerTypes(local_planner_str)
         except (ValueError, KeyError):
-            print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController")
+            print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController or PurePursuitController as default.")
             controller_type = ControllerTypes.LQR
+            local_planner_type = LocalPlannerTypes.PurePursuit
         controller_params = controller_params[controller_type.value]
+        local_planner_params = local_planner_params[local_planner_type.value]
         # Create robot simulator
         dt: float = controller_params["dt"]
         robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
-        path_follower = ProjectedPathFollower(path_points=path, obstacle_checker=self.obstacle_checker)
+        if local_planner_type == LocalPlannerTypes.PurePursuit:
+            local_planner = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path,
+                                                  lookahead=local_planner_params["lookahead"], v_desired=controller_params["v_desired"], dt=local_planner_params["dt"])
+        else:
+            raise NotImplementedError("Only PurePursuit local planner is implemented in this tester.")
+        
         if controller_type == ControllerTypes.LQR:
             # Use a reduced lookahead for the LQR to keep references closer
             # This helps avoid large overshoots when approaching the final goal.
-            lookahead_config: float = controller_params["lookahead"]
-            lookahead: float = float(lookahead_config) * 0.5
-            v_desired: float = controller_params["v_desired"]
-            dt: float = controller_params["dt"]
+            v_desired: float = controller_params["v_desired"] # TODO: Check consistency in v_desired with local planner
+            dt: float = controller_params["dt"] # TODO: Check consistency in dt with local planner
             Q = controller_params["Q"]
             R = controller_params["R"]
-            controller: Controller = LQRController(robot_controller= self.actuator_controller_est, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, Q=Q, R=R)
+            controller: Controller = LQRController(robot_controller=self.actuator_controller_est, local_planner=local_planner, v_desired=v_desired, dt=dt, Q=Q, R=R)
         elif controller_type == ControllerTypes.MRAC:
-            lookahead: float = controller_params["lookahead"]
-            v_desired: float = controller_params["v_desired"]
-            dt: float = controller_params["dt"]
+            dt: float = controller_params["dt"] # TODO: Check consistency in dt with local planner
             gamma: float = controller_params["gamma"]
             kp: float = controller_params["kp"]
             kv: float = controller_params["kv"]
             alpha_min: float = controller_params["alpha_min"]
             alpha_max: float = controller_params["alpha_max"]
-            controller: Controller = MRACController(robot_controller= self.actuator_controller_est, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
-        else: #MPPI
+            controller: Controller = MRACController(robot_controller=self.actuator_controller_est, local_planner=local_planner, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+        else: #MPPI or others
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
         
@@ -182,7 +190,7 @@ class ControllerTester:
         print(f"\nSimulating controller (real-time timeout: {max_time}s, dt: {dt_sim})...")
         while True:
             # Get reference state from path follower for debugging
-            ref_state = controller.path_follower.get_reference_state(np.array([current_state[0], current_state[1], current_state[2]]), lookahead, v_desired) #TODO: If no lookahead in controller, use default
+            ref_state = controller.get_reference_state(current_state[:3])
             reference_states.append(ref_state.copy())
             # Compute control from controller
             if self.state_uncertainty["Enable"]:

@@ -41,53 +41,69 @@
     "Control":
     {
         "goal_threshold": 0.01,
-        "Controller":
+        "Cascading Controllers":
         {
-            "type": "LQR"
-        },
-        "MPC":
-        {
-            "Horizon": 1000,
-            "dt": 0.001
-        },
-        "MPPI":
-        {
-            "N_Horizon": 10,
-            "dt": 0.1,
-            "alpha": 1.0,
-            "sigma": 1.0,
-            "Lambda": 2.0,
-            "myu": 10.0,
-            "K": 50
-        },
-        "MRAC":
-        {
-            "lookahead": 0.3,
-            "v_desired": 2.0,
-            "dt": 0.1,
-            "gamma": 0.1,
-            "kp": 10.0,
-            "kv": 2.0,
-            "alpha_min": 0.5,
-            "alpha_max": 1.5
-        },
-        "LQR":
-        {
-            "lookahead": 0.1,
-            "v_desired": 2.0,
-            "dt": 0.1,
-            "Q": [200.0, 200.0, 10.0, 10.0, 10.0, 2.0],
-            "R": [0.5, 0.5, 0.5]
-        },
-        "PID":
-        {
-            "Kp": [1.0, 1.0, 1.0],
-            "Ki": [0.0, 0.0, 0.0],
-            "Kd": [0.1, 0.1, 0.1]
-        },
-        "SMC":
-        {
+            "LocalPlanner":
+            {
+                "type": "PurePursuit",
+                "PurePursuit":
+                {
+                    "lookahead": 0.1,
+                    "v_desired": 2.0,
+                    "dt": 0.1
+                }
+            },
+            "Controller":
+            {
+                "type": "LQR"
+            },           
+            "MRAC":
+            {
+                "lookahead": 0.3,
+                "v_desired": 2.0,
+                "dt": 0.1,
+                "gamma": 0.1,
+                "kp": 10.0,
+                "kv": 2.0,
+                "alpha_min": 0.5,
+                "alpha_max": 1.5
+            },
+            "LQR":
+            {
+                "v_desired": 2.0,
+                "dt": 0.1,
+                "Q": [200.0, 200.0, 10.0, 10.0, 10.0, 2.0],
+                "R": [0.5, 0.5, 0.5]
+            },
+            "PID":
+            {
+                "Kp": [1.0, 1.0, 1.0],
+                "Ki": [0.0, 0.0, 0.0],
+                "Kd": [0.1, 0.1, 0.1]
+            },
+            "SMC":
+            {
 
+            }
+        },
+        "Others":
+        {
+            "type": "MPPI",
+            "MPC":
+            {
+                "Horizon": 1000,
+                "dt": 0.001
+            },
+            "MPPI":
+            {
+                "N_Horizon": 10,
+                "dt": 0.1,
+                "alpha": 1.0,
+                "sigma": 1.0,
+                "Lambda": 2.0,
+                "myu": 10.0,
+                "K": 50
+            }
         }
     },
     "Obstacle Detection":

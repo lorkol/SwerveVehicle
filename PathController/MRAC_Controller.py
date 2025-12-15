@@ -1,18 +1,18 @@
 import numpy as np
-from PathController.Controller import Controller
+from PathController.Controller import Controller, LocalPlanner
 from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
+from Types import NP3DPoint, State6D
 
 
 class MRACController(Controller):
-    def __init__(self, robot_controller: ActuatorController, path_follower: ProjectedPathFollower, 
-                 lookahead: float = 0.3, v_desired: float = 1.0, dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
+    def __init__(self, robot_controller: ActuatorController, local_planner: LocalPlanner, 
+                 dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
                  gamma: float = 0.5, kp: float = 8.0, kv: float = 4.0):
-        super().__init__(robot_controller, path_follower)        
-        
-        self._lookahead: float = lookahead  # meters
-        self._v_desired: float = v_desired  # m/s
+        super().__init__(robot_controller)        
+        self._local_planner: LocalPlanner = local_planner
+
         self._dt: float = dt
         self._alpha_min: float = alpha_min
         self._alpha_max: float = alpha_max
@@ -46,7 +46,7 @@ class MRACController(Controller):
 
         # --- 3. Get Reference (The Rabbit) ---
         # Get the moving target based on path geometry
-        ref = self.path_follower.get_reference_state(np.array([x, y, theta]), self._lookahead, self._v_desired)
+        ref: State6D = self._local_planner.get_reference_state(np.array([x, y, theta]))
 
         # --- 4. Calculate Tracking Error (Sync Times) ---
         # Compare Robot(t) vs Model(t) BEFORE updating the model
@@ -126,3 +126,13 @@ class MRACController(Controller):
         control_vec[4:8] = deltas
         
         return control_vec
+    
+    def is_stabilized(self, current_state: State6D, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
+            # Check if position error and velocity error are within tolerances
+            pos_error: float = np.linalg.norm(current_state[0:3] - self._local_planner.get_reference_state(current_state[:3])[0:3]) # type: ignore
+            vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
+            return (pos_error < pos_tol) and (vel_error < vel_tol)
+        
+    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+        """Get the reference state for the controller given the current robot pose."""
+        return self._local_planner.get_reference_state(current_pose)
