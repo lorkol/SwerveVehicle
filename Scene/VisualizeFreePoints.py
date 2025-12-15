@@ -20,7 +20,7 @@ import numpy as np
 from JsonManager import load_json
 from Map import Map
 from Robot import Robot
-from Types import State2D, ConvexShape
+from Types import ConvexShape
 from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
 
 

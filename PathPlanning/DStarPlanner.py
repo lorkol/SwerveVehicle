@@ -11,7 +11,7 @@ from typing import List, Tuple, Optional, Dict
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import State2D
+from Types import OptionalPathType, PathType, State2D
 
 
 class DStarPlanner(Planner):
@@ -67,7 +67,7 @@ class DStarPlanner(Planner):
         self._k_min: float = 0.0
         '''Minimum key value in open set.'''
     
-    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def plan(self, start: State2D, goal: State2D) -> OptionalPathType:
         """
         Plan a path from start to goal using D*.
         
@@ -212,7 +212,7 @@ class DStarPlanner(Planner):
         key, state = self._open_set[0]
         return (key, state)
     
-    def _get_neighbors(self, state: State2D) -> List[State2D]:
+    def _get_neighbors(self, state: State2D) -> PathType:
         """Get all valid neighboring states."""
         x, y, theta = state
         neighbors = []
@@ -262,7 +262,7 @@ class DStarPlanner(Planner):
             angle += 2 * math.pi
         return angle
     
-    def _reconstruct_path(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def _reconstruct_path(self, start: State2D, goal: State2D) -> Optional[PathType]:
         """Reconstruct path from start to goal."""
         path = [start]
         current = start

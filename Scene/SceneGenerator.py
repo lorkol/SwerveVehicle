@@ -7,7 +7,7 @@ Supports sparse random obstacles, dense mazes, and narrow passages.
 import json
 import random
 import math
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 from enum import Enum
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches

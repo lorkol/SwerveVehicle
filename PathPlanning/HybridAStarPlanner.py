@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple, Optional
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import State2D
+from Types import OptionalPathType, PathType, State2D
 
 
 class HybridAStarPlanner(Planner):
@@ -84,7 +84,7 @@ class HybridAStarPlanner(Planner):
         
         return primitives
     
-    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def plan(self, start: State2D, goal: State2D) -> OptionalPathType:
         """
         Plan a path from start to goal using Hybrid A*.
         
@@ -236,7 +236,7 @@ class HybridAStarPlanner(Planner):
             angle += 2 * math.pi
         return angle
     
-    def _reconstruct_path(self, node: Node) -> List[State2D]:
+    def _reconstruct_path(self, node: Node) -> PathType:
         """Reconstruct path from start to current node."""
         path = []
         current = node

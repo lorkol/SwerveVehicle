@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Optional
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
-from Types import State2D
+from Types import PathType, State2D
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,7 +19,7 @@ class Planner(ABC):
     """Abstract base class for path planners."""
     
     @abstractmethod
-    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def plan(self, start: State2D, goal: State2D) -> Optional[PathType]:
         """Plan a path from start to goal. Return list of states or None if no path found."""
         pass
     
@@ -48,7 +48,7 @@ class Node:
         return self.state == other.state
 
 
-def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsample_factor: int = 5) -> List[State2D]:
+def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_factor: int = 5) -> PathType:
     """
     Smooth the path using B-Spline and then downsample for controller use.
     Tries multiple smoothing strategies, progressively less aggressive if earlier ones fail.
@@ -124,7 +124,7 @@ def smooth_path(path: List[State2D], obstacle_checker: ObstacleChecker, downsamp
             dx, dy = splev(u_new, tck, der=1)
             new_theta: np.ndarray = np.arctan2(dy, dx)
             
-            smoothed_path: List[State2D] = []
+            smoothed_path: PathType = []
             for i in range(len(new_x)):
                 smoothed_path.append((new_x[i], new_y[i], new_theta[i])) # type: ignore
             

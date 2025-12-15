@@ -1,11 +1,8 @@
 import numpy as np
-import scipy.linalg
 from PathController.Controller import Controller
 from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
-from Types import Point2D
-from typing import List
 
 
 class MRACController(Controller):

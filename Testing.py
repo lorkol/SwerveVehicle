@@ -22,14 +22,14 @@ from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
 
-from Types import State2D, ConvexShape
+from Types import PathType, ConvexShape
 
 from PathPlanning.Planners import Planner
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
 from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 class ControllerTester:
@@ -81,7 +81,7 @@ class ControllerTester:
         else:
             raise ValueError(f"Unknown planner type: {planner_type}")
     
-    def plan_path(self) -> Optional[List[State2D]]:
+    def plan_path(self) -> Optional[PathType]:
         """Plan path using configured planner."""
         planner = self.get_planner()
         print(f"\nPlanning path from {self.start} to {self.goal}...")
@@ -94,12 +94,12 @@ class ControllerTester:
         print(f"[OK] Path found with {len(path)} waypoints")
         return path
     
-    def generate_trajectory(self, path: List[State2D]) -> np.ndarray:
+    def generate_trajectory(self, path: PathType) -> np.ndarray:
         """Return the path as a (3, N) array for plotting as the reference trajectory."""
         arr = np.array(path).T  # shape (3, N)
         return arr
 
-    def simulate_controller(self, path: List[State2D], ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def simulate_controller(self, path: PathType, ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Simulate MPPI controller following reference trajectory with rolling horizon."""
         # Debug: Check path endpoint
         print(f"\n[DEBUG] PathFollower path check:")
@@ -300,7 +300,7 @@ class ControllerTester:
         
         return np.array(error_x), np.array(error_y), np.array(error_theta)
     
-    def visualize(self, path: List[State2D], executed_states: np.ndarray, ref_traj: np.ndarray, reference_states: np.ndarray = None):
+    def visualize(self, path: PathType, executed_states: np.ndarray, ref_traj: np.ndarray, reference_states: np.ndarray = None):
         """Visualize planning and control results."""
         print(f"\nVisualizing: {len(executed_states)} executed states")
         if len(executed_states) > 0:

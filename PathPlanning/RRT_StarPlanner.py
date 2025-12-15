@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import State2D
+from Types import OptionalPathType, PathType, State2D
 
 
 class RRTStarPlanner(Planner):
@@ -54,13 +54,13 @@ class RRTStarPlanner(Planner):
         self._tree_nodes: List[Node] = []
         '''All nodes in the RRT* tree.'''
         
-        self._best_path: Optional[List[State2D]] = None
+        self._best_path: OptionalPathType = None
         '''Best path found so far.'''
         
         self._best_cost: float = float('inf')
         '''Cost of best path found so far.'''
     
-    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def plan(self, start: State2D, goal: State2D) -> OptionalPathType:
         """
         Plan a path from start to goal using RRT*.
         
@@ -295,7 +295,7 @@ class RRTStarPlanner(Planner):
                 nearby.append(node)
         return nearby
     
-    def _reconstruct_path(self, node: Node) -> List[State2D]:
+    def _reconstruct_path(self, node: Node) -> PathType:
         """Reconstruct path from start to given node."""
         path = []
         current = node

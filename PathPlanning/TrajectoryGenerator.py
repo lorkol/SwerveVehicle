@@ -1,13 +1,12 @@
 import numpy as np
 
-from typing import List, Tuple
 
-from Types import State2D
+from Types import PathType
 
 
 class TrajectoryGenerator:
     """
-    Converts a static spatial path (List[State2D]) into a timed reference trajectory 
+    Converts a static spatial path (PathType) into a timed reference trajectory 
     for the MPC controller.
     """
     def __init__(self, dt: float, horizon: int, max_velocity: float = 2.0):
@@ -15,7 +14,7 @@ class TrajectoryGenerator:
         self._horizon: int = horizon
         self._max_velocity: float = max_velocity # m/s
         
-    def get_reference_trajectory(self, current_state: np.ndarray, global_path: List[State2D]) -> np.ndarray:
+    def get_reference_trajectory(self, current_state: np.ndarray, global_path: PathType) -> np.ndarray:
         """
         Generates a local reference trajectory (State_Size, Horizon) from the global path.
         
@@ -54,7 +53,7 @@ class TrajectoryGenerator:
         th_closest: float = global_path[closest_idx][2]
         
         # Handle initial offset: create reaching segment if robot is far from path
-        ref_states: List[State2D] = []
+        ref_states: PathType = []
         initial_distance: float = np.linalg.norm(p_closest - robot_xy) # type: ignore
         
         if initial_distance > 0.5:  # If more than 0.5m away, add reaching segment

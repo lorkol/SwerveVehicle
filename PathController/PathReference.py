@@ -1,5 +1,4 @@
 import numpy as np
-from Types import Point2D
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker, StaticObstacleChecker
 

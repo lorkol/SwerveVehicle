@@ -4,7 +4,6 @@ from PathController.Controller import Controller
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
-from Types import Point2D
 from typing import List
 
 class LQRController(Controller):

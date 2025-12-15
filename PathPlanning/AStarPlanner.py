@@ -7,7 +7,7 @@ from typing import List, Tuple, Optional
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import State2D
+from Types import OptionalPathType, State2D
 
 
 class AStarPlanner(Planner):
@@ -52,7 +52,7 @@ class AStarPlanner(Planner):
         self._open_set_states: dict[State2D, float] = {}
         '''Maps states to their f_cost for O(1) lookup.'''
         
-    def plan(self, start: State2D, goal: State2D) -> Optional[List[State2D]]:
+    def plan(self, start: State2D, goal: State2D) -> OptionalPathType:
         """
         Plan a path from start to goal using A*.
         
@@ -226,7 +226,7 @@ class AStarPlanner(Planner):
             angle += 2 * math.pi
         return angle
     
-    def _reconstruct_path(self, node: Node) -> List[State2D]:
+    def _reconstruct_path(self, node: Node) -> OptionalPathType:
         """Reconstruct path from start to current node."""
         path = []
         current = node
