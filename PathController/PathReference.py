@@ -1,7 +1,7 @@
 import numpy as np
 from Types import Point2D
 
-from ObstacleDetection.ObstacleDetector import ObstacleChecker
+from ObstacleDetection.ObstacleDetector import ObstacleChecker, StaticObstacleChecker
 
 class ProjectedPathFollower:
     def __init__(self, path_points: list, obstacle_checker: ObstacleChecker = None, min_obstacle_dist: float = 0.5, max_obstacle_dist: float = 3.0, min_velocity_scale: float = 0.2):
@@ -21,7 +21,7 @@ class ProjectedPathFollower:
         self.last_idx: int = 0
         
         # Obstacle-aware velocity scaling
-        self.obstacle_checker = obstacle_checker
+        self.obstacle_checker: StaticObstacleChecker = obstacle_checker # type: ignore
         self.min_obstacle_dist = min_obstacle_dist
         self.max_obstacle_dist = max_obstacle_dist
         self.min_velocity_scale = min_velocity_scale

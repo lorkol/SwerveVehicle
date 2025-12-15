@@ -15,7 +15,7 @@ class TrajectoryGenerator:
         self._horizon: int = horizon
         self._max_velocity: float = max_velocity # m/s
         
-    def get_reference_trajectory(self, current_state: State2D, global_path: List[State2D]) -> np.ndarray:
+    def get_reference_trajectory(self, current_state: np.ndarray, global_path: List[State2D]) -> np.ndarray:
         """
         Generates a local reference trajectory (State_Size, Horizon) from the global path.
         
@@ -29,8 +29,6 @@ class TrajectoryGenerator:
         Returns:
             ref_traj: (State_Size, Horizon) numpy array
         """
-        # Ensure current_state is a numpy array instead of a tuple
-        current_state: np.ndarray = np.array(current_state)
         #If the trajectory is empty, return a holding pattern at current position
         if not global_path or len(global_path) < 2:
             # Fallback: Stay in place if no path
@@ -49,7 +47,7 @@ class TrajectoryGenerator:
         robot_theta: float = current_state[2]
         
         dists: np.ndarray = np.linalg.norm(path_xy - robot_xy, axis=1)
-        closest_idx: int = np.argmin(dists)
+        closest_idx: int = np.argmin(dists) # type: ignore
         
         # Get closest point and next point on path
         p_closest: np.ndarray = np.array(global_path[closest_idx][:2])
@@ -57,7 +55,7 @@ class TrajectoryGenerator:
         
         # Handle initial offset: create reaching segment if robot is far from path
         ref_states: List[State2D] = []
-        initial_distance: float = np.linalg.norm(p_closest - robot_xy)
+        initial_distance: float = np.linalg.norm(p_closest - robot_xy) # type: ignore
         
         if initial_distance > 0.5:  # If more than 0.5m away, add reaching segment
             num_reach_steps: int = min(5, self._horizon // 3)  # Use up to 5 steps or 1/3 of horizon
@@ -74,7 +72,7 @@ class TrajectoryGenerator:
                     reach_th_diff += 2 * np.pi
                 reach_th: float = robot_theta + ratio * reach_th_diff
                 
-                ref_states.append([reach_x, reach_y, reach_th])
+                ref_states.append([reach_x, reach_y, reach_th]) # type: ignore
         
         # Now continue with main path following
         current_path_idx: int = closest_idx
@@ -91,7 +89,7 @@ class TrajectoryGenerator:
             while current_path_idx < len(global_path) - 1:
                 p1: np.ndarray = np.array(global_path[current_path_idx][:2])
                 p2: np.ndarray = np.array(global_path[current_path_idx + 1][:2])
-                segment_len: float = np.linalg.norm(p2 - p1)
+                segment_len: float = np.linalg.norm(p2 - p1) # type: ignore
                 
                 if dist_accumulated + segment_len >= target_dist_from_start:
                     # Target point is on this segment
@@ -127,7 +125,7 @@ class TrajectoryGenerator:
                     else:
                         continuous_theta = interp_th
                     
-                    ref_states.append([interp_x, interp_y, continuous_theta])
+                    ref_states.append([interp_x, interp_y, continuous_theta]) # type: ignore
                     break
                 else:
                     # Segment too short, move to next

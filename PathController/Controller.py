@@ -31,4 +31,4 @@ class Controller(ABC):
         pos_error = np.linalg.norm(current_state[0:3] - self.path_follower.path[-1][0:3])
         vel_error = np.linalg.norm(current_state[3:6])
         
-        return (pos_error < pos_tol) and (vel_error < vel_tol)  
+        return (pos_error < pos_tol) and (vel_error < vel_tol) # type: ignore

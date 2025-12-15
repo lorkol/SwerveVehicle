@@ -1,433 +1,87 @@
-"""
-Test file for Path Planners and MPPI Controller
-Tests the Planning algorithms and Controller with the robot's map and obstacle detector.
-"""
-
-import sys
-from pathlib import Path
 import time
-
-# Add parent directory to path so imports work
-sys.path.insert(0, str(Path(__file__).parent))
-
-import json
 import math
-from typing import Tuple, List
+import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from PathPlanning.AStarPlanner import AStarPlanner
-from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
-from PathPlanning.Planners import Planner, PlannerTypes, smooth_path
-from PathPlanning.RRT_StarPlanner import RRTStarPlanner
-from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
-from PathPlanning.DStarPlanner import DStarPlanner
-from PathPlanning.TrajectoryGenerator import TrajectoryGenerator
+from matplotlib.transforms import Affine2D
+
+
+from ActuatorController.ActuatorController import ActuatorController
+
 from PathController.Robot_Sim import Robot_Sim
 from PathController.MPPI.MPPI_Controller import MPPIController
 from PathController.Controller import Controller, ControllerTypes
-from PathController.SMC_Controller import SMCController
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
-from ActuatorController.ActuatorController import ActuatorController
 from PathController.PathReference import ProjectedPathFollower
+
+from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
+
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
+
 from Types import State2D, ConvexShape
-import numpy as np
 
-
-def _get_rotated_robot_corners(center_x: float, center_y: float, length: float, width: float, theta: float) -> List[Tuple[float, float]]:
-    """
-    Calculate the corners of a rotated rectangle representing the robot.
-    
-    Args:
-        center_x, center_y: Center position of robot
-        length: Robot length (along x-axis when theta=0)
-        width: Robot width (along y-axis when theta=0)
-        theta: Rotation angle in radians
-        
-    Returns:
-        List of (x, y) corners in world frame
-    """
-    half_length = length / 2.0
-    half_width = width / 2.0
-    
-    # Corners in local frame (centered at origin)
-    corners_local = [
-        (-half_length, -half_width),
-        (half_length, -half_width),
-        (half_length, half_width),
-        (-half_length, half_width)
-    ]
-    
-    # Rotate and translate to world frame
-    cos_theta = math.cos(theta)
-    sin_theta = math.sin(theta)
-    
-    corners_world = []
-    for lx, ly in corners_local:
-        # Rotate
-        wx = cos_theta * lx - sin_theta * ly
-        wy = sin_theta * lx + cos_theta * ly
-        # Translate
-        wx += center_x
-        wy += center_y
-        corners_world.append((wx, wy))
-    
-    return corners_world
-
-
-def visualize_path_on_map(map_obj: Map, robot: Robot, obstacles, path: List[State2D], start: State2D, goal: State2D, world_bounds: Tuple[Tuple[float, float], Tuple[float, float]],
-                          title: str = "Path Planning Result"):
-    """Visualize the planned path with obstacles on the map."""
-    
-    fig, ax = plt.subplots(figsize=(12, 10))
-    
-    # Set map boundaries
-    x_min, x_max = world_bounds[0]
-    y_min, y_max = world_bounds[1]
-    ax.set_xlim(x_min - 1, x_max + 1)
-    ax.set_ylim(y_min - 1, y_max + 1)
-    ax.set_aspect('equal')
-    
-    # Draw map boundary
-    boundary = patches.Rectangle(
-        (x_min, y_min), x_max - x_min, y_max - y_min,
-        linewidth=2, edgecolor='black', facecolor='none', label='Map Boundary'
-    )
-    ax.add_patch(boundary)
-    
-    # Draw obstacles
-    for i, obstacle in enumerate(obstacles):
-        if obstacle.shape == ConvexShape.Circle:
-            circle = patches.Circle(
-                (obstacle.center[0], obstacle.center[1]),
-                obstacle.radius,
-                linewidth=2, edgecolor='red', facecolor='red', alpha=0.3,
-                label='Obstacles' if i == 0 else ''
-            )
-            ax.add_patch(circle)
-        elif obstacle.shape == ConvexShape.Polygon:
-            if hasattr(obstacle, 'points') and obstacle.points:
-                polygon = patches.Polygon(
-                    obstacle.points,
-                    linewidth=2, edgecolor='red', facecolor='red', alpha=0.3,
-                    label='Obstacles' if i == 0 else ''
-                )
-                ax.add_patch(polygon)
-    
-    # Draw path if it exists
-    if path:
-        path_x = [state[0] for state in path]
-        path_y = [state[1] for state in path]
-        ax.plot(path_x, path_y, 'b-', linewidth=2, label='Planned Path', zorder=5)
-        
-        # Draw waypoints
-        ax.plot(path_x, path_y, 'bo', markersize=4, zorder=5)
-        
-        # Draw orientation arrows at selected waypoints
-        step = max(1, len(path) // 10)  # Show ~10 arrows
-        for i in range(0, len(path), step):
-            state = path[i]
-            x, y, theta = state
-            # Arrow length proportional to robot size
-            arrow_len = 0.5
-            dx = arrow_len * math.cos(theta)
-            dy = arrow_len * math.sin(theta)
-            ax.arrow(x, y, dx, dy, head_width=0.3, head_length=0.2, 
-                    fc='blue', ec='blue', alpha=0.6, zorder=5)
-    
-    # Draw start and goal
-    ax.plot(start[0], start[1], 'go', markersize=12, label='Start', zorder=10)
-    ax.arrow(start[0], start[1], 
-            0.5 * math.cos(start[2]), 0.5 * math.sin(start[2]),
-            head_width=0.3, head_length=0.2, fc='green', ec='green', zorder=10)
-    
-    ax.plot(goal[0], goal[1], 'r*', markersize=20, label='Goal', zorder=10)
-    ax.arrow(goal[0], goal[1], 
-            0.5 * math.cos(goal[2]), 0.5 * math.sin(goal[2]),
-            head_width=0.3, head_length=0.2, fc='orange', ec='orange', zorder=10)
-    
-    # Draw robot footprint at start position
-    start_corners = _get_rotated_robot_corners(start[0], start[1], robot.length, robot.width, start[2])
-    start_robot_polygon = patches.Polygon(
-        start_corners,
-        linewidth=2, edgecolor='green', facecolor='green', 
-        alpha=0.2, zorder=4, label='Robot at Start'
-    )
-    ax.add_patch(start_robot_polygon)
-    
-    # Draw robot footprint at goal position
-    goal_corners = _get_rotated_robot_corners(goal[0], goal[1], robot.length, robot.width, goal[2])
-    goal_robot_polygon = patches.Polygon(
-        goal_corners,
-        linewidth=2, edgecolor='red', facecolor='red', 
-        alpha=0.2, zorder=4, label='Robot at Goal'
-    )
-    ax.add_patch(goal_robot_polygon)
-    
-    # Labels and legend
-    ax.set_xlabel('X (meters)', fontsize=12)
-    ax.set_ylabel('Y (meters)', fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper right', fontsize=10)
-    
-    plt.tight_layout()
-    return fig, ax
-
-
-def test_planner():
-    """Test the planner with map and obstacle detector."""
-    
-    # Load configuration files
-    print("Loading configuration...")
-    config_path = "Scene/Configuration.json"
-    param_path = "Scene/Parameters.json"
-    config = load_json(config_path)
-    params = load_json(param_path)
-    
-    # Extract robot and map config
-    robot_config = config.get("Robot", {})
-    map_config = config.get("Map", {})
-    
-    print(f"  Robot dimensions: {robot_config['Dimensions']}")
-    print(f"  Map dimensions: {map_config['Dimensions']}")
-    
-    # Create Robot and Map objects
-    robot = Robot(robot_config)
-    map_obj = Map(map_config)
-    
-    # Define world bounds from map dimensions
-    world_bounds = ((0, map_obj.length),(0, map_obj.width))
-    
-    print(f"\nWorld bounds: x=[0, {map_obj.length}], y=[0, {map_obj.width}]")
-    print(f"Number of obstacles: {len(map_obj.obstacles)}")
-    
-    # Debug: Print obstacle details
-    for i, obs in enumerate(map_obj.obstacles):
-        if obs.shape == ConvexShape.Circle:
-            print(f"  Obstacle {i}: Circle at {obs.center}, radius={obs.radius}")
-        elif obs.shape == ConvexShape.Polygon:
-            print(f"  Obstacle {i}: Polygon with {len(obs.points)} vertices")
-    
-    # Create obstacle checker
-    obstacle_checker = StaticObstacleChecker(robot=robot, map_limits=world_bounds, obstacles=map_obj.obstacles, use_parallelization=False)
-    
-    # Create Path planner
-    planner_params = params["Path Planning"]
-    planner_type_str = planner_params["Planner"]["type"]
-    try:
-        planner_type = PlannerTypes(planner_type_str)
-    except (ValueError, KeyError):
-        print(f"Warning: Unknown planner type '{planner_type_str}', using AStarPlanner")
-        planner_type = PlannerTypes.AStarPlanner
-    planner_params = params["Path Planning"][planner_type.value]
-    if planner_type == PlannerTypes.AStarPlanner:
-        grid_resolution: float = planner_params["grid_resolution"]
-        angle_resolution: float = planner_params["angle_resolution"]
-        planner: Planner = AStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_resolution=angle_resolution)
-    elif planner_type == PlannerTypes.HybridAStarPlanner:  
-        grid_resolution: float = planner_params["grid_resolution"]
-        angle_bins: int = planner_params["angle_bins"]      
-        planner: Planner = HybridAStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_bins=angle_bins)
-    elif planner_type == PlannerTypes.RRTStarPlanner:
-        rewire_radius_factor = planner_params["rewire_radius_factor"]
-        rrt_timeout = planner_params["timeout"]
-        planner: Planner = RRTStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, timeout=rrt_timeout, rewire_radius_factor=rewire_radius_factor)
-    else: #if planner_type == PlannerTypes.DStarPlanner:
-        grid_resolution: float = planner_params["grid_resolution"]
-        angle_resolution: float = planner_params["angle_resolution"]
-        planner: Planner = DStarPlanner(obstacle_checker=obstacle_checker, world_bounds=world_bounds, grid_resolution=grid_resolution, angle_resolution=angle_resolution)
-    
-    # Test cases: (start, goal, description)
-    test_cases = [
-        (
-            (5.0, 5.0, 0.0),
-            (map_obj.length - 20.0, map_obj.width - 20.0, 0.0),
-            "Corner to opposite corner"
-        ),
-        (
-            (map_obj.length / 2, map_obj.width / 2, 0.0),
-            (map_obj.length / 2 + 2.0, map_obj.width / 2 + 2.0, math.pi / 4),
-            "Center to nearby position"
-        ),
-        (
-            (5.0, map_obj.width / 2, math.pi / 2),
-            (map_obj.length - 20.0,  map_obj.width - 20.0, math.pi / 2),
-            "Left to right side"
-        ),
-    ]
-    
-    # Run tests
-    for i, (start, goal, description) in enumerate(test_cases, 1):
-        print(f"\n{'='*60}")
-        print(f"Test {i}: {description}")
-        print(f"{'='*60}")
-        print(f"Start: x={start[0]:.2f}, y={start[1]:.2f}, θ={start[2]:.2f} rad ({math.degrees(start[2]):.1f}°)")
-        print(f"Goal:  x={goal[0]:.2f}, y={goal[1]:.2f}, θ={goal[2]:.2f} rad ({math.degrees(goal[2]):.1f}°)")
-        
-        # Debug: Check if start and goal are in collision
-        start_collision = obstacle_checker.is_collision(start)
-        goal_collision = obstacle_checker.is_collision(goal)
-        print(f"\nDebug Info:")
-        print(f"  Start in collision: {start_collision}")
-        print(f"  Goal in collision: {goal_collision}")
-        
-        if start_collision or goal_collision:
-            print(f"  ⚠️  Start or goal is in collision! Skipping this test.")
-            continue
-               
-        # Plan path
-        print(f"\n  Planning path...")
-        path = planner.plan(start, goal)
-        path = smooth_path(path, obstacle_checker)  # type: ignore # Smooth the path if found
-        
-        if path:
-            print(f"\n✓ Path found with {len(path)} waypoints")
-            print(f"\nPath waypoints:")
-            for j, state in enumerate(path):
-                print(f"  {j:3d}: x={state[0]:7.2f}, y={state[1]:7.2f}, θ={math.degrees(state[2]):7.1f}°")
-            
-            # Calculate total path length
-            total_length = 0.0
-            for j in range(1, len(path)):
-                dx = path[j][0] - path[j-1][0]
-                dy = path[j][1] - path[j-1][1]
-                total_length += math.sqrt(dx**2 + dy**2)
-            print(f"\nTotal path length: {total_length:.2f} units")
-            
-            # Visualize the path
-            fig, ax = visualize_path_on_map(
-                map_obj, robot, map_obj.obstacles, path, start, goal, world_bounds,
-                title=f"A* Path: {description}"
-            )
-            plt.show()
-        else:
-            print(f"\n✗ No path found!")
-            print(f"  Debug: Max iterations may have been reached")
-    
-    print(f"\n{'='*60}")
-    print("Testing complete!")
-    print(f"{'='*60}")
-
-
-def test_collision_detection():
-    """Test collision detection with specific points."""
-    
-    print("\n" + "="*60)
-    print("Collision Detection Test")
-    print("="*60)
-    
-    config = load_json("Scene/Configuration.json")
-    robot = Robot(config.get("Robot", {}))
-    map_obj = Map(config.get("Map", {}))
-    
-    world_bounds = (
-        (0, map_obj.length),
-        (0, map_obj.width)
-    )
-    
-    obstacle_checker = StaticObstacleChecker(
-        robot=robot,
-        map_limits=world_bounds,
-        obstacles=map_obj.obstacles,
-        use_parallelization=False
-    )
-    
-    # Test points
-    test_points = [
-        ((5.0, 5.0, 0.0), "Free space (corner)"),
-        ((map_obj.length / 2, map_obj.width / 2, 0.0), "Center"),
-        ((0.1, 0.1, 0.0), "Near boundary"),
-    ]
-    
-    print(f"\nTesting {len(test_points)} points for collisions:\n")
-    for point, description in test_points:
-        is_collision = obstacle_checker.is_collision(point)
-        status = "COLLISION" if is_collision else "CLEAR"
-        print(f"  {description:30s} -> {status}")
+from PathPlanning.Planners import Planner
+from PathPlanning.RRT_StarPlanner import RRTStarPlanner
+from PathPlanning.AStarPlanner import AStarPlanner
+from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
+from PathPlanning.DStarPlanner import DStarPlanner
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ControllerTester:
-    """Test MPPI controller with planned trajectories."""
+    """Test Planning and Controlling."""
     DEBUG = True  # Set to False to remove all debug prints
     
     def __init__(self, config_path: str = "Scene/Configuration.json", params_path: str = "Scene/Parameters.json"):
         """Initialize controller tester."""
-        self.config = load_json(config_path)
-        self.params = load_json(params_path)
+        self.config: Dict[str, Any] = load_json(config_path)
+        self.params: Dict[str, Any] = load_json(params_path)
         
         # Create robot and map
-        self.robot = Robot(self.config.get("Robot", {}))
-        self.map_obj = Map(self.config.get("Map", {}))
+        self.robot = Robot(self.config["Robot"])
+        self.map_obj = Map(self.config["Map"])
         self.world_bounds = ((0, self.map_obj.length), (0, self.map_obj.width))
         
         # Create obstacle checker
-        self.obstacle_checker = StaticObstacleChecker(
-            robot=self.robot,
-            obstacles=self.map_obj.obstacles,
-            map_limits=self.world_bounds,
-            use_parallelization=False
-        )
+        self.obstacle_checker = StaticObstacleChecker(robot=self.robot, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False)
         
         # Create actuator controller
         self.actuator_controller = ActuatorController(self.robot)
-        
-        # Use same test points as path planner tests
+
+        # Define start and goal        
         self.start = (5.0, 5.0, 0.0)
         self.goal = (self.map_obj.length - 20.0, self.map_obj.width - 20.0, 0.0)
+        self.planner: Planner = self.get_planner()
+
+        
     
-    def get_planner(self):
+    def get_planner(self) -> Planner:
         """Get planner based on parameters."""
-        planner_config = self.params.get("Path Planning", {})
-        planner_type = planner_config.get("Planner", {}).get("type", "RRTStarPlanner")
+        planner_config = self.params["Path Planning"]
+        planner_type = planner_config["Planner"]["type"]
         
         print(f"Creating planner: {planner_type}")
         
         if planner_type == "AStarPlanner":
-            params = planner_config.get("AStarPlanner", {})
-            return AStarPlanner(
-                grid_resolution=params.get("grid_resolution", 1.0),
-                angle_resolution=params.get("angle_resolution", np.pi/4),
-                obstacle_checker=self.obstacle_checker,
-                world_bounds=self.world_bounds
-            )
-        
+            params = planner_config["AStarPlanner"]
+            return AStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         elif planner_type == "RRTStarPlanner":
-            params = planner_config.get("RRTStarPlanner", {})
-            return RRTStarPlanner(
-                obstacle_checker=self.obstacle_checker,
-                world_bounds=self.world_bounds,
-                step_size=params.get("step_size", 1.0),
-                goal_sample_rate=params.get("goal_sample_rate", 0.1),
-                rewire_radius_factor=params.get("rewire_radius_factor", 10.0),
-                timeout=params.get("timeout", 10.0)
-            )
-        
+            params = planner_config["RRTStarPlanner"]
+            return RRTStarPlanner(obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds, step_size=params["step_size"], goal_sample_rate=params["goal_sample_rate"], rewire_radius_factor=params["rewire_radius_factor"], timeout=params["timeout"])
         elif planner_type == "HybridAStarPlanner":
-            params = planner_config.get("HybridAStarPlanner", {})
-            return HybridAStarPlanner(
-                grid_resolution=params.get("grid_resolution", 0.5),
-                angle_bins=params.get("angle_bins", 16),
-                obstacle_checker=self.obstacle_checker,
-                world_bounds=self.world_bounds
-            )
-        
+            params = planner_config["HybridAStarPlanner"]
+            return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         elif planner_type == "DStarPlanner":
-            params = planner_config.get("DStarPlanner", {})
-            return DStarPlanner(
-                grid_resolution=params.get("grid_resolution", 2.0),
-                angle_resolution=params.get("angle_resolution", np.pi/4),
-                obstacle_checker=self.obstacle_checker,
-                world_bounds=self.world_bounds
-            )
-        
+            params = planner_config["DStarPlanner"]
+            return DStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         else:
             raise ValueError(f"Unknown planner type: {planner_type}")
     
-    def plan_path(self):
+    def plan_path(self) -> Optional[List[State2D]]:
         """Plan path using configured planner."""
         planner = self.get_planner()
         print(f"\nPlanning path from {self.start} to {self.goal}...")
@@ -445,7 +99,7 @@ class ControllerTester:
         arr = np.array(path).T  # shape (3, N)
         return arr
 
-    def simulate_controller(self, path, ref_traj: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def simulate_controller(self, path: List[State2D], ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Simulate MPPI controller following reference trajectory with rolling horizon."""
         # Debug: Check path endpoint
         print(f"\n[DEBUG] PathFollower path check:")
@@ -493,7 +147,8 @@ class ControllerTester:
             alpha_max: float = controller_params["alpha_max"]
             controller: Controller = MRACController(robot_controller= self.actuator_controller, path_follower=path_follower, lookahead=lookahead, v_desired=v_desired, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
         else: #MPPI
-            controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
+            #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
+            raise NotImplementedError("simulation not implemented in this tester.")
         
         
         # Initial state
@@ -518,11 +173,7 @@ class ControllerTester:
         print(f"\nSimulating controller (real-time timeout: {max_time}s, dt: {dt_sim})...")
         while True:
             # Get reference state from path follower for debugging
-            ref_state = controller.path_follower.get_reference_state(
-                np.array([current_state[0], current_state[1], current_state[2]]), 
-                controller._lookahead, 
-                controller._v_desired
-            )
+            ref_state = controller.path_follower.get_reference_state(np.array([current_state[0], current_state[1], current_state[2]]), lookahead, v_desired) #TODO: If no lookahead in controller, use default
             reference_states.append(ref_state.copy())
             # Compute control from controller
             control_input = controller.get_command(current_state)
@@ -632,9 +283,9 @@ class ControllerTester:
                     closest_idx = i if t < 0.5 else i+1
             
             # Calculate errors
-            px = closest_path_point[0]
-            py = closest_path_point[1]
-            p_theta = closest_path_point[2] if len(closest_path_point) > 2 else 0
+            px = closest_path_point[0] # type: ignore
+            py = closest_path_point[1] # type: ignore
+            p_theta = closest_path_point[2] if len(closest_path_point) > 2 else 0 # type: ignore
             
             error_x.append(rx - px)
             error_y.append(ry - py)
@@ -649,7 +300,7 @@ class ControllerTester:
         
         return np.array(error_x), np.array(error_y), np.array(error_theta)
     
-    def visualize(self, path: List[State2D], executed_states: List[np.ndarray], ref_traj: np.ndarray, reference_states: np.ndarray = None):
+    def visualize(self, path: List[State2D], executed_states: np.ndarray, ref_traj: np.ndarray, reference_states: np.ndarray = None):
         """Visualize planning and control results."""
         print(f"\nVisualizing: {len(executed_states)} executed states")
         if len(executed_states) > 0:
@@ -682,7 +333,7 @@ class ControllerTester:
         for i, obstacle in enumerate(self.map_obj.obstacles):
             if obstacle.shape == ConvexShape.Circle:
                 circle = patches.Circle(
-                    (obstacle.center[0], obstacle.center[1]), obstacle.radius,
+                    (obstacle.center[0], obstacle.center[1]), obstacle.radius, # type: ignore
                     linewidth=2, edgecolor='red', facecolor='red', alpha=0.4,
                     label='Obstacles' if i == 0 else ''
                 )
@@ -736,7 +387,7 @@ class ControllerTester:
                 )
                 
                 # Create transform: rotate and translate
-                t = patches.transforms.Affine2D().rotate_around(0, 0, theta) + patches.transforms.Affine2D().translate(x, y)
+                t = Affine2D().rotate_around(0, 0, theta) + Affine2D().translate(x, y)
                 t += ax1.transData
                 rect.set_transform(t)
                 ax1.add_patch(rect)
@@ -815,6 +466,7 @@ class ControllerTester:
         plt.savefig('controller_test_result.png', dpi=150, bbox_inches='tight')
         print("Figure saved to controller_test_result.png")
         plt.show()
+        
     def run(self):
         """Run complete controller test."""
         print("=" * 60)
@@ -827,7 +479,7 @@ class ControllerTester:
             return
         
         # Generate trajectory
-        ref_traj = self.generate_trajectory(path)
+        ref_traj: np.ndarray = self.generate_trajectory(path)
         
         # Simulate controller
         executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj)
@@ -841,40 +493,10 @@ class ControllerTester:
         print("=" * 60)
 
 
-def test_controller():
-    """Test controller with path planning and trajectory generation."""
-    tester = ControllerTester()
-    tester.run()
-
-
-def show_menu():
-    """Display menu and get user choice."""
-    print("\n" + "=" * 60)
-    print("AUTONOMOUS VEHICLE TESTING SUITE")
-    print("=" * 60)
-    print("\nSelect test to run:")
-    print("  1 - Path Planner Tests")
-    print("  2 - Collision Detection Tests")
-    print("  3 - MPPI Controller Test")
-    print("  4 - Run All Tests")
-    print("  0 - Exit")
-    print()
-    
-    while True:
-        try:
-            choice = input("Enter your choice (0-4): ").strip()
-            if choice in ['0', '1', '2', '3', '4']:
-                return choice
-            else:
-                print("Invalid choice. Please enter 0-4.")
-        except KeyboardInterrupt:
-            print("\nExiting...")
-            return '0'
-
-
 if __name__ == "__main__":
     try:
-        test_controller()
+        tester = ControllerTester()
+        tester.run()
     except Exception as e:
         print(f"\n✗ Error during controller testing: {e}")
         import traceback
