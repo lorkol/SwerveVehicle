@@ -16,6 +16,11 @@ from PathController.Robot_Sim import Robot_Sim
 
 import numpy as np
 from Types import State6D
+import json
+import os
+from Scene.Robot import Robot
+
+    
 
 State: TypeAlias = np.ndarray #(3, )
 '''np (3,) x, y, theta'''
@@ -119,9 +124,6 @@ class SMCController:
         return control_vec
     
 if __name__ == "__main__":
-    import json
-    import os
-    
     # Load robot parameters
     config_path = os.path.join(os.path.dirname(__file__), '../../Scene/Configuration.json')
     if os.path.exists(config_path):
@@ -144,7 +146,6 @@ if __name__ == "__main__":
         robot = MockRobot()
         robot_cfg = {} # Not used if mock is used
         
-    from Scene.Robot import Robot
     real_robot = Robot(robot_cfg)
     actuator = ActuatorController(real_robot)
     reference_generator: SimpleReferenceGenerator = SimpleReferenceGenerator()

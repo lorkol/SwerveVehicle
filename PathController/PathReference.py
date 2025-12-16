@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
-from ObstacleDetection.ObstacleDetector import ObstacleChecker, StaticObstacleChecker
 
 class ReferenceGenerator(ABC):
     @abstractmethod
@@ -16,6 +15,7 @@ class SimpleReferenceGenerator(ReferenceGenerator):
     def __init__(self):
         pass
     
+    # TODO: Generalize so it can either get time or current_state
     def get_reference_state(self, t: float) -> np.ndarray:
         return np.array([20.0, 20., 0.0])
     
