@@ -8,6 +8,11 @@ import math
 
 
 class PurePursuitController(LocalPlanner):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController, path_points: PathType, lookahead: float = 0.5, v_desired: float = 1.0, dt: float = 0.1):
         """
         Pure Pursuit Reference Generator for Cascaded Control.

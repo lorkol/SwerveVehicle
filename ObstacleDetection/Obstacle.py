@@ -5,8 +5,21 @@ from Types import ConvexShape, ObstacleType, Point2D
 
 
 class Obstacle:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, obstacle_type: ObstacleType = ObstacleType.Static, shape: ConvexShape = ConvexShape.Circle,
                  points: Optional[List[Point2D]] = None, center: Optional[Point2D] = None, radius: Optional[float] = None) -> None:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.type: ObstacleType = obstacle_type
         '''The type of the obstacle (static or dynamic).'''
         self.shape: ConvexShape = shape
@@ -43,7 +56,20 @@ def load_obstacles(obs_list: List[Dict[str, Union[str, List[Point2D], float]]]) 
 
 
 class MovingObstacle(Obstacle):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, center: Point2D, radius: float, max_velocity: float, max_acceleration: float) -> None:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         super().__init__(obstacle_type=ObstacleType.Dynamic, shape=ConvexShape.Circle, center=center, radius=radius)
         self.max_velocity: float = max_velocity
         '''The maximum velocity of the moving obstacle.'''

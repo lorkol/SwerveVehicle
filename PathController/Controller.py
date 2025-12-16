@@ -10,6 +10,11 @@ from Types import State2D, State6D
 
 
 class ControllerTypes(Enum):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     LQR = "LQR"
     MRAC = "MRAC"
     SMC = "SMC"
@@ -17,7 +22,20 @@ class ControllerTypes(Enum):
     MPC = "MPC"
         
 class Controller(ABC):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.actuator: ActuatorController = robot_controller
     
     @abstractmethod

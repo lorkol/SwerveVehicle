@@ -26,10 +26,31 @@ State: TypeAlias = np.ndarray #(3, )
 '''np (3,) x, y, theta'''
 
 def get_state_and_vel_error(current_state: State6D, reference_state: State6D) -> State6D:
+    """TODO: Add docstring.
+
+    Args:
+        TODO: describe parameters
+
+    Returns:
+        TODO: describe return value
+    """
     return reference_state - current_state
 
 class SMCController:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController, reference_generator: SimpleReferenceGenerator, lambda_gains: np.ndarray, k_gains: np.ndarray, boundary_layer: float = 0.1):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.actuator: ActuatorController = robot_controller
         self.reference_generator: SimpleReferenceGenerator = reference_generator
 
@@ -53,6 +74,14 @@ class SMCController:
 
     def get_command(self, state: State6D, t: float) -> np.ndarray:
         # --- 1. State Conversion (Robot -> Global) ---
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         x, y, theta = state[0], state[1], state[2]
         vx_R, vy_R, v_theta = state[3], state[4], state[5]
         
@@ -134,6 +163,11 @@ if __name__ == "__main__":
         # Fallback if config file isn't found in this specific path structure
         # (Mocking values for standalone test)
         class MockRobot:
+            """TODO: Class docstring.
+
+            Attributes:
+                TODO: describe attributes
+            """
             mass = 10.0
             inertia = 1.0
             wheel_radius = 0.1

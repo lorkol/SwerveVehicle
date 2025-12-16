@@ -18,7 +18,20 @@ from PathController.Types import State_Vector, Control_Vector
 # This ensures: d1_rad and d1_rad + 2π produce identical forces.
 
 class Robot_Sim:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, actuator: ActuatorController, robot: Robot, dt: float = 0.1):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self._state = None
         self._robot: Robot = robot
         self._actuator_controller: ActuatorController = actuator

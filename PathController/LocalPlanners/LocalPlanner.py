@@ -7,10 +7,28 @@ from ActuatorController.ActuatorController import ActuatorController
 import numpy as np
 
 class LocalPlannerTypes(Enum):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     PurePursuit = "PurePursuit"
     
 class LocalPlanner(ABC):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController, path_points: List[State2D]):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.actuator: ActuatorController = robot_controller
         self.path: np.ndarray = np.array(path_points)  # Convert path to numpy array for fast operations
         

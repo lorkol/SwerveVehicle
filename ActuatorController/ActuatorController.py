@@ -5,6 +5,11 @@ from numpy.typing import NDArray
 from Scene.Robot import Robot
 
 class ActuatorController:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot: Robot) -> None:
         """Initializes the actuator controller for a swerve drive robot."""
         #Dimensions and physical properties

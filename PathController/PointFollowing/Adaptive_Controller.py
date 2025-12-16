@@ -13,7 +13,20 @@ State: TypeAlias = np.ndarray #(3, )
 from scipy.linalg import solve_continuous_lyapunov
 
 class AdaptiveController:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, dt: float):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.dt = dt
         
         # --- 1. Gains ---
@@ -123,6 +136,14 @@ class AdaptiveController:
         # Convert the Calculated Forces back to Accels using the ESTIMATED parameters
         # This is what you pass to your robot's 'get_angles_and_torques'
         # if it expects acceleration inputs.
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         ax = F_cmd[0] / self.theta_hat[0]
         ay = F_cmd[1] / self.theta_hat[0]
         alpha = F_cmd[2] / self.theta_hat[1]
@@ -144,6 +165,11 @@ if __name__ == "__main__":
         # Fallback if config file isn't found in this specific path structure
         # (Mocking values for standalone test)
         class MockRobot:
+            """TODO: Class docstring.
+
+            Attributes:
+                TODO: describe attributes
+            """
             mass = 10.0
             inertia = 1.0
             wheel_radius = 0.1

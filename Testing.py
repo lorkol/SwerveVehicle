@@ -69,6 +69,14 @@ class Simulation:
         self.controller: Controller = None # type: ignore # Will be created after path is planned
     
     def init_scene(self):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         noise_params: Dict[str, Any] = self.params["Noise"]
         self.state_uncertainty: Dict[str, Any] = noise_params["State Estimation Uncertainty"]
         # Create robot and map
@@ -120,6 +128,14 @@ class Simulation:
         return path
     
     def _get_local_planner_reference_state_method(self, path) -> Callable:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         try:
             controller_params: Dict[str, Any] = self.params["Control"]["Cascading Controllers"] # TODO: Currently only using Cascading Controllers, add a way to choose
             local_planner_params: Dict[str, Any] = controller_params["LocalPlanner"]
@@ -450,6 +466,14 @@ class Simulation:
 
             def get_progress(x, y):
                 # Find closest segment and fraction along path
+                """TODO: Add docstring.
+
+                Args:
+                    TODO: describe parameters
+
+                Returns:
+                    TODO: describe return value
+                """
                 dists = np.linalg.norm(path_points[:, :2] - np.array([x, y]), axis=1)
                 idx = np.argmin(dists)
                 if idx == len(cum_lengths) - 1:

@@ -5,7 +5,20 @@ from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
 
 class SMCController(Controller):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], lambda_gains: np.ndarray, k_gains: np.ndarray, boundary_layer: float = 0.1):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.actuator: ActuatorController = robot_controller
         self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         
@@ -29,6 +42,14 @@ class SMCController(Controller):
 
     def get_command(self, state: State_Vector, dt: float = 0.1) -> Control_Vector:
         # --- 1. State Conversion (Robot -> Global) ---
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         x, y, theta = state[0], state[1], state[2]
         vx_R, vy_R, v_theta = state[3], state[4], state[5]
         
@@ -101,10 +122,26 @@ class SMCController(Controller):
         return control_vec
     
     def get_reference_state(self, current_pose: State_Vector) -> State_Vector:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         return self.get_reference_method(current_pose)
     
     def is_stabilized(self, current_state: State_Vector, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
         # Check if position error and velocity error are within tolerances
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         pos_error: float = np.linalg.norm(current_state[0:3] - self.get_reference_method(current_state[:3])[0:3]) # type: ignore
         vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
         return (pos_error < pos_tol) and (vel_error < vel_tol)

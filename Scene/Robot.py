@@ -2,7 +2,20 @@ from typing import Any, Dict, Optional
 from Uncertainties.uncertainty import create_parameter_uncertainty_multiplier
 
 class Robot:
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_json_object: Dict[str, Any], noise_params: Optional[Dict[str, Any]] = None) -> None:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self.length: float = robot_json_object["Dimensions"]["Length"]
         self.width: float = robot_json_object["Dimensions"]["Width"]
         self.mass: float = robot_json_object["Mass"]

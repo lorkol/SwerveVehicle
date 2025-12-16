@@ -9,7 +9,20 @@ from typing import Callable, List
 from Types import State2D, State6D
 
 class LQRController(Controller):
+    """TODO: Class docstring.
+
+    Attributes:
+        TODO: describe attributes
+    """
     def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], Q: List[float], R: List[float], dt: float = 0.1):
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         super().__init__(robot_controller)
         self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         self._dt: float = dt
@@ -33,6 +46,14 @@ class LQRController(Controller):
 
     def get_command(self, state: State6D, debug: bool = False) -> Control_Vector:
         # --- 1. State Conversion (Robot -> Global) ---
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         x, y, theta = state[0], state[1], state[2]
         vx_G, vy_G, v_theta = state[3], state[4], state[5]
 
@@ -122,6 +143,14 @@ class LQRController(Controller):
 
     def is_stabilized(self, current_state: State6D, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
         # Check if position error and velocity error are within tolerances
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         pos_error: float = np.linalg.norm(current_state[0:3] - self.get_reference_state(current_state[:3])[0:3]) # type: ignore
         vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
         return (pos_error < pos_tol) and (vel_error < vel_tol)

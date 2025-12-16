@@ -13,12 +13,28 @@ Map_Width = 50.0   # meters
 max_velocity = Max_Wheel_Rotation_Speed * Wheel_Radius
 
 def state_velocity_constraint(state: State_Vector) -> float:
+    """TODO: Add docstring.
+
+    Args:
+        TODO: describe parameters
+
+    Returns:
+        TODO: describe return value
+    """
     state_x_vel = state[1]
     state_y_vel = state[3]
     velocity_magnitude = (state_x_vel**2 + state_y_vel**2)**0.5
     return velocity_magnitude - max_velocity
 
 def _torque_limit_constraint(inputs: Control_Vector) -> np.ndarray:
+    """TODO: Add docstring.
+
+    Args:
+        TODO: describe parameters
+
+    Returns:
+        TODO: describe return value
+    """
     wheel_torques = inputs[0:4]
     return np.array([abs(wheel_torques[0] - Max_Wheel_Torque),
                      abs(wheel_torques[1] - Max_Wheel_Torque), 
@@ -26,6 +42,14 @@ def _torque_limit_constraint(inputs: Control_Vector) -> np.ndarray:
                      abs(wheel_torques[3] - Max_Wheel_Torque)])
     
 def _steering_speed_constraint(inputs: Control_Vector) -> np.ndarray:
+    """TODO: Add docstring.
+
+    Args:
+        TODO: describe parameters
+
+    Returns:
+        TODO: describe return value
+    """
     steering_speeds = inputs[4:8]
     return np.array([abs(steering_speeds[0] - Max_Steering_Speed),
                      abs(steering_speeds[1] - Max_Steering_Speed),
@@ -33,6 +57,14 @@ def _steering_speed_constraint(inputs: Control_Vector) -> np.ndarray:
                      abs(steering_speeds[3] - Max_Steering_Speed)])
     
 def input_constraints(inputs: Control_Vector) -> np.ndarray:
+    """TODO: Add docstring.
+
+    Args:
+        TODO: describe parameters
+
+    Returns:
+        TODO: describe return value
+    """
     torque_constraints = _torque_limit_constraint(inputs)
     steering_constraints = _steering_speed_constraint(inputs)
     return np.concatenate((torque_constraints, steering_constraints), axis=0)

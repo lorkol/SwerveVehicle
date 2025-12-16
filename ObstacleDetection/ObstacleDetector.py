@@ -12,6 +12,14 @@ from Types import ConvexShape, State2D, Point2D
 class ObstacleChecker(ABC):
     """Abstract base class for obstacle checking - implement with your obstacle detection."""
     def __init__(self, segment_num_samples: int = 20) -> None:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self._segment_num_samples: int = segment_num_samples
     
     @abstractmethod
@@ -34,6 +42,14 @@ Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
     def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False, segment_num_samples: int = 20, collision_clearance: float = 0.0) -> None:
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         super().__init__(segment_num_samples)
         self._robot: Robot = robot
         self._obstacles: List[Obstacle] = obstacles

@@ -34,6 +34,14 @@ P = np.block([
 class MPPIController(Controller):
     """Model Predictive Path Integral (MPPI) Controller."""
     def __init__(self, desired_traj: Trajectory, robot_sim: Robot_Sim, collision_check_method: Callable[[State2D], bool], N_Horizon: int = 5, alpha: float = 1.0, sigma: float = 1.0, lambda_: float = 0.1, myu: float = 2.0, K: int = 50) -> None:       
+        """TODO: Add docstring.
+
+        Args:
+            TODO: describe parameters
+
+        Returns:
+            TODO: describe return value
+        """
         self._N_Horizon = N_Horizon
         self._alpha: float = alpha
         self._sigma: float = sigma
