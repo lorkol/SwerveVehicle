@@ -1,3 +1,4 @@
+from typing import Callable
 import numpy as np
 from PathController.Controller import Controller, LocalPlanner
 from PathController.PathReference import ProjectedPathFollower
@@ -7,12 +8,11 @@ from Types import NP3DPoint, State6D
 
 
 class MRACController(Controller):
-    def __init__(self, robot_controller: ActuatorController, local_planner: LocalPlanner, 
+    def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray],
                  dt: float = 0.1, alpha_min: float = 0.5, alpha_max: float = 3.0,
                  gamma: float = 0.5, kp: float = 8.0, kv: float = 4.0):
         super().__init__(robot_controller)        
-        self._local_planner: LocalPlanner = local_planner
-
+        self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         self._dt: float = dt
         self._alpha_min: float = alpha_min
         self._alpha_max: float = alpha_max
@@ -46,7 +46,7 @@ class MRACController(Controller):
 
         # --- 3. Get Reference (The Rabbit) ---
         # Get the moving target based on path geometry
-        ref: State6D = self._local_planner.get_reference_state(np.array([x, y, theta]))
+        ref: State6D = self.get_reference_method(np.array([x, y, theta]))
 
         # --- 4. Calculate Tracking Error (Sync Times) ---
         # Compare Robot(t) vs Model(t) BEFORE updating the model
@@ -135,4 +135,4 @@ class MRACController(Controller):
         
     def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
-        return self._local_planner.get_reference_state(current_pose)
+        return self.get_reference_method(current_pose)

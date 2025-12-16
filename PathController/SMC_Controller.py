@@ -1,19 +1,16 @@
+from typing import Callable
 import numpy as np
-from PathController.Controller import Controller
+from PathController.Controller import Controller, LocalPlanner
 from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
 from Types import Point2D
 
 class SMCController(Controller):
-    def __init__(self, robot_controller: ActuatorController, path_points: list[Point2D], lookahead: float = 0.3, v_desired: float = 1.0, lambda_gain: float = 2.0, k_gain: float = 5.0, boundary_layer: float = 0.1):
+    def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], lambda_gain: float = 2.0, k_gain: float = 5.0, boundary_layer: float = 0.1):
         self.actuator: ActuatorController = robot_controller
-        self.path_follower = ProjectedPathFollower(path_points)
+        self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         
-        # Tracking Parameters
-        self._lookahead: float = lookahead
-        self._v_desired: float = v_desired
-
         # --- SMC Tuning Parameters ---
         
         # Lambda (λ): The slope of the sliding surface. 
@@ -45,7 +42,7 @@ class SMCController(Controller):
 
         # --- 2. Get Reference (The "Carrot") ---
         # ref_state: [x_r, y_r, th_r, vx_r, vy_r, vth_r]
-        ref_state: np.ndarray = self.path_follower.get_reference_state(np.array([x, y]), self._lookahead, self._v_desired)
+        ref_state: np.ndarray = self.get_reference_method(current_global_pos)
         
         ref_pos = ref_state[:3]
         ref_vel = ref_state[3:6]
@@ -103,3 +100,12 @@ class SMCController(Controller):
         control_vec[4:8] = deltas
         
         return control_vec
+    
+    def get_reference_state(self, current_pose: State_Vector) -> State_Vector:
+        return self.local_planner.get_reference_state(current_pose)
+    
+    def is_stabilized(self, current_state: State_Vector, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
+        # Check if position error and velocity error are within tolerances
+        pos_error: float = np.linalg.norm(current_state[0:3] - self.local_planner.get_reference_state(current_state[:3])[0:3]) # type: ignore
+        vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
+        return (pos_error < pos_tol) and (vel_error < vel_tol)

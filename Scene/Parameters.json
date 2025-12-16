@@ -10,6 +10,15 @@
         {
             "type": "RRTStarPlanner"
         },
+        "RRTStarPlanner":
+        {
+            "step_size": 1.0,
+            "max_iterations": 10000,
+            "goal_sample_rate": 0.1,
+            "search_radius": 2.0,
+            "timeout": 5.0,
+            "rewire_radius_factor": 5.0
+        },
         "AStarPlanner":
         {
             "grid_resolution": 1.0,
@@ -22,25 +31,16 @@
             "angle_bins": 16,
             "pos_tolerance": 0.5
         },
-        "RRTStarPlanner":
-        {
-            "step_size": 1.0,
-            "max_iterations": 10000,
-            "goal_sample_rate": 0.1,
-            "search_radius": 2.0,
-            "timeout": 10.0,
-            "rewire_radius_factor": 5.0
-        },
         "DStarPlanner":
         {
-            "grid_resolution": 2.0,
+            "grid_resolution": 0.5,
             "angle_resolution": 0.1963345408493621,
-            "pos_tolerance": 2.0
+            "pos_tolerance": 0.5
         }
     },
     "Control":
     {
-        "goal_threshold": 0.01,
+        "StabilizationRadius": 0.3,
         "Cascading Controllers":
         {
             "LocalPlanner":
@@ -48,19 +48,17 @@
                 "type": "PurePursuit",
                 "PurePursuit":
                 {
-                    "lookahead": 5.0,
+                    "lookahead": 2.0,
                     "v_desired": 2.0,
                     "dt": 0.1
                 }
             },
             "Controller":
             {
-                "type": "MRAC"
+                "type": "SMC"
             },           
             "MRAC":
             {
-                "lookahead": 3.0,
-                "v_desired": 2.0,
                 "dt": 0.1,
                 "gamma": 0.1,
                 "kp": 3.0,
@@ -70,7 +68,6 @@
             },
             "LQR":
             {
-                "v_desired": 2.0,
                 "dt": 0.1,
                 "Q": [200.0, 200.0, 10.0, 10.0, 10.0, 2.0],
                 "R": [0.5, 0.5, 0.5]
@@ -83,7 +80,20 @@
             },
             "SMC":
             {
-
+                "dt": 0.1,
+                "lambda_gain": 2.0,
+                "k_gain": 5.0,
+                "boundary_layer": 0.1
+            }
+        },
+        "Single Point Controllers":
+        {
+            "type": "Adaptive",
+            "Adaptive":
+            {
+            },
+            "Sliding Window":
+            {
             }
         },
         "Others":

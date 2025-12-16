@@ -20,6 +20,7 @@ from PathController.PathReference import ProjectedPathFollower
 
 from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
 
+from PathController.SMC_Controller import SMCController
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
@@ -29,14 +30,14 @@ from Types import PathType, ConvexShape
 from PathPlanning.Planners import Planner, smooth_path
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
-from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
+# from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
 from typing import Any, Dict, Optional, Tuple
 
 from Uncertainties.uncertainty import add_state_estimation_uncertainty
 
 
-class ControllerTester:
+class ControllerTester:      
     """Test Planning and Controlling."""
     DEBUG = True  # Set to False to remove all debug prints
     
@@ -84,11 +85,13 @@ class ControllerTester:
             params = planner_config["RRTStarPlanner"]
             return RRTStarPlanner(obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds, step_size=params["step_size"], goal_sample_rate=params["goal_sample_rate"], rewire_radius_factor=params["rewire_radius_factor"], timeout=params["timeout"])
         elif planner_type == "HybridAStarPlanner":
-            params = planner_config["HybridAStarPlanner"]
-            return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
+            raise NotImplementedError("HybridAStarPlanner is not yet implemented in this tester.")
+        #     params = planner_config["HybridAStarPlanner"]
+        #     return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         elif planner_type == "DStarPlanner":
-            params = planner_config["DStarPlanner"]
-            return DStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
+            raise NotImplementedError("DStarPlanner is not yet implemented in this tester.")
+            # params = planner_config["DStarPlanner"]
+            # return DStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         else:
             raise ValueError(f"Unknown planner type: {planner_type}")
     
@@ -144,7 +147,7 @@ class ControllerTester:
         robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
         if local_planner_type == LocalPlannerTypes.PurePursuit:
             local_planner = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path,
-                                                  lookahead=local_planner_params["lookahead"], v_desired=controller_params["v_desired"], dt=local_planner_params["dt"])
+                                                  lookahead=local_planner_params["lookahead"], v_desired=local_planner_params["v_desired"], dt=local_planner_params["dt"])
         else:
             raise NotImplementedError("Only PurePursuit local planner is implemented in this tester.")
         
@@ -152,24 +155,27 @@ class ControllerTester:
             # Use a reduced lookahead for the LQR to keep references closer
             # This helps avoid large overshoots when approaching the final goal.
             v_desired: float = controller_params["v_desired"] # TODO: Check consistency in v_desired with local planner
-            dt: float = controller_params["dt"] # TODO: Check consistency in dt with local planner
             Q = controller_params["Q"]
             R = controller_params["R"]
-            controller: Controller = LQRController(robot_controller=self.actuator_controller_est, local_planner=local_planner, v_desired=v_desired, dt=dt, Q=Q, R=R)
+            controller: Controller = LQRController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, Q=Q, R=R)
         elif controller_type == ControllerTypes.MRAC:
-            dt: float = controller_params["dt"] # TODO: Check consistency in dt with local planner
             gamma: float = controller_params["gamma"]
             kp: float = controller_params["kp"]
             kv: float = controller_params["kv"]
             alpha_min: float = controller_params["alpha_min"]
             alpha_max: float = controller_params["alpha_max"]
-            controller: Controller = MRACController(robot_controller=self.actuator_controller_est, local_planner=local_planner, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+            controller: Controller = MRACController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+        elif controller_type == ControllerTypes.SMC:
+            k_gain: float = controller_params["k_gain"]
+            lambda_gain: float = controller_params["lambda_gain"]
+            boundary_layer: float = controller_params["boundary_layer"]
+            controller: Controller = SMCController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, k_gain=k_gain, lambda_gain=lambda_gain, boundary_layer=boundary_layer)
         else: #MPPI or others
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
         
         # Get stabilization radius from parameters (default 1.0)
-        stabilization_radius = self.params.get("Control", {}).get("StabilizationRadius", 1.0)
+        stabilization_radius = self.params["Control"]["StabilizationRadius"]
         stabilization_window = 100
         
         # Initial state
@@ -203,12 +209,18 @@ class ControllerTester:
                 measured_state = current_state + noise
             else:
                 measured_state = current_state.copy()
-                
+
             control_input = controller.get_command(measured_state)
             executed_controls.append(control_input.copy())
             # Propagate state using robot simulator
-            current_state = robot_sim.propagate(current_state, control_input)
-            executed_states.append(current_state.copy())
+            new_state = robot_sim.propagate(current_state, control_input)
+            executed_states.append(new_state.copy())
+
+            # Print wheel angles (delta1, delta2, delta3, delta4)
+            # wheel_angles = new_state[6:10]
+            # print(f"Step {step+1}: wheel angles = {[f'{angle:.6f}' for angle in wheel_angles]}")
+            current_state = new_state
+
             # Check stabilization
             if self.state_uncertainty["Enable"]:
                 noise = add_state_estimation_uncertainty(self.state_uncertainty["Position Noise StdDev"], self.state_uncertainty["Orientation Noise StdDev"], 
@@ -351,19 +363,16 @@ class ControllerTester:
         if reference_states is not None:
             print(f"  Reference states collected: {len(reference_states)}")
         
-        # Create figure with GridSpec for flexible layout
-        fig = plt.figure(figsize=(20, 12))
-        gs = fig.add_gridspec(2, 3, height_ratios=[1.2, 1])
-        
+        # Create a single large figure for the trajectory/map
+        fig, ax1 = plt.subplots(figsize=(20, 12))
+
         (x_min, x_max), (y_min, y_max) = self.world_bounds
-        
-        # --- Plot 1: Controller Execution (Large, spans 2 columns) ---
-        ax1 = fig.add_subplot(gs[0, 0:2])
+
         ax1.set_xlim(x_min - 1, x_max + 1)
         ax1.set_ylim(y_min - 1, y_max + 1)
         ax1.set_aspect('equal')
         ax1.set_title('Controller Execution Trajectory', fontsize=14, fontweight='bold')
-        
+
         # Map boundary
         boundary = patches.Rectangle(
             (x_min, y_min), x_max - x_min, y_max - y_min,
@@ -416,7 +425,7 @@ class ControllerTester:
             # Draw robot rectangles at regular intervals
             robot_length = self.robot_est.length
             robot_width = self.robot_est.width
-            num_total = 200  # total rectangles to draw
+            num_total = 20  # total rectangles to draw
             num_pre90 = 10   # at least 10 before 90% progress
             # Compute cumulative path length
             path_points = np.array(path)
@@ -475,6 +484,11 @@ class ControllerTester:
                 t += ax1.transData
                 rect.set_transform(t)
                 ax1.add_patch(rect)
+                # Draw an arrow for theta direction from the center of the rectangle
+                arrow_length = robot_length * 0.7
+                dx = arrow_length * np.cos(theta)
+                dy = arrow_length * np.sin(theta)
+                ax1.arrow(x, y, dx, dy, head_width=robot_width*0.4, head_length=robot_length*0.25, fc='navy', ec='navy', alpha=0.8, zorder=8)
         
         # Start and goal
         ax1.scatter(*self.start[:2], s=200, c='green', marker='o', edgecolors='darkgreen', linewidth=2, label='Start', zorder=10)
@@ -485,58 +499,13 @@ class ControllerTester:
         ax1.legend(loc='upper right', fontsize=10)
         ax1.grid(True, alpha=0.3)
         
-        # --- Error Plots ---
+
         # Calculate path errors (x, y, theta relative to closest path point)
         error_x, error_y, error_theta = self.calculate_path_errors(executed_states, path)
         cross_track_errors = self.calculate_cross_track_error(executed_states, path)
-        time_steps = np.arange(len(executed_states))
-        
         if self.DEBUG:
             print(f"\n[DEBUG] Path errors calculated: {len(error_x)} points")
-        
-        # X error plot (top right)
-        ax2 = fig.add_subplot(gs[0, 2])
-        ax2.plot(time_steps, error_x, 'r-', linewidth=2, label='X Error')
-        ax2.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax2.fill_between(time_steps, 0, error_x, alpha=0.3, color='red')
-        ax2.set_xlabel('Time Step', fontsize=12)
-        ax2.set_ylabel('Error (meters)', fontsize=12)
-        ax2.set_title('X Position Error vs Path', fontsize=14, fontweight='bold')
-        ax2.grid(True, alpha=0.3)
-        ax2.legend()
-        
-        # Y error plot (bottom left)
-        ax3 = fig.add_subplot(gs[1, 0])
-        ax3.plot(time_steps, error_y, 'b-', linewidth=2, label='Y Error')
-        ax3.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax3.fill_between(time_steps, 0, error_y, alpha=0.3, color='blue')
-        ax3.set_xlabel('Time Step', fontsize=12)
-        ax3.set_ylabel('Error (meters)', fontsize=12)
-        ax3.set_title('Y Position Error vs Path', fontsize=14, fontweight='bold')
-        ax3.grid(True, alpha=0.3)
-        ax3.legend()
-        
-        # Theta error plot (bottom middle)
-        ax4 = fig.add_subplot(gs[1, 1])
-        ax4.plot(time_steps, error_theta, 'g-', linewidth=2, label='Theta Error')
-        ax4.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-        ax4.fill_between(time_steps, 0, error_theta, alpha=0.3, color='green')
-        ax4.set_xlabel('Time Step', fontsize=12)
-        ax4.set_ylabel('Error (radians)', fontsize=12)
-        ax4.set_title('Theta (Angle) Error vs Path', fontsize=14, fontweight='bold')
-        ax4.grid(True, alpha=0.3)
-        ax4.legend()
-        
-        # Cross-track error plot (bottom right)
-        ax5 = fig.add_subplot(gs[1, 2])
-        ax5.plot(time_steps, cross_track_errors, 'm-', linewidth=2, label='Cross-Track Error')
-        ax5.fill_between(time_steps, 0, cross_track_errors, alpha=0.3, color='magenta')
-        ax5.set_xlabel('Time Step', fontsize=12)
-        ax5.set_ylabel('Error (meters)', fontsize=12)
-        ax5.set_title('Cross-Track Error (Distance to Path)', fontsize=14, fontweight='bold')
-        ax5.grid(True, alpha=0.3)
-        ax5.legend()
-        
+
         # Print path tracking error statistics
         print(f"\n--- Path Tracking Error Statistics ---")
         print(f"  X Error - Mean: {np.mean(np.abs(error_x)):.4f}m, Max: {np.max(np.abs(error_x)):.4f}m, RMS: {np.sqrt(np.mean(error_x**2)):.4f}m")
@@ -544,13 +513,84 @@ class ControllerTester:
         print(f"  Theta Error - Mean: {np.mean(np.abs(error_theta)):.4f}rad, Max: {np.max(np.abs(error_theta)):.4f}rad, RMS: {np.sqrt(np.mean(error_theta**2)):.4f}rad")
         print(f"  Cross-Track Error - Mean: {np.mean(cross_track_errors):.4f}m, Max: {np.max(cross_track_errors):.4f}m, RMS: {np.sqrt(np.mean(cross_track_errors**2)):.4f}m")
 
-        
         plt.tight_layout()
         # Save figure instead of blocking on show()
         plt.savefig('controller_test_result.png', dpi=150, bbox_inches='tight')
         print("Figure saved to controller_test_result.png")
         plt.show()
-        
+
+        # Show velocity and error plots in a second popup
+        self.plot_velocities_and_errors(executed_states, error_x, error_y, error_theta, cross_track_errors)
+    
+
+    def plot_velocities_and_errors(self, executed_states: np.ndarray, error_x, error_y, error_theta, cross_track_errors):
+        """
+        Plots velocity and tracking error graphs in a single popup window.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        if executed_states.shape[1] < 6:
+            print("[WARN] executed_states does not have enough columns for velocities. Skipping velocity plots.")
+            return
+
+        vx = executed_states[:, 3]
+        vy = executed_states[:, 4]
+        vtheta = executed_states[:, 5]
+        time = np.arange(len(executed_states))
+
+        fig, axs = plt.subplots(2, 3, figsize=(18, 8))
+        fig.suptitle('Velocity and Tracking Error Graphs')
+
+        # Velocity graphs
+        axs[0, 0].plot(time, vx, color='b')
+        axs[0, 0].set_xlabel('Time Step')
+        axs[0, 0].set_ylabel('Velocity x (m/s)')
+        axs[0, 0].set_title('vx over time')
+
+        axs[0, 1].plot(time, vy, color='g')
+        axs[0, 1].set_xlabel('Time Step')
+        axs[0, 1].set_ylabel('Velocity y (m/s)')
+        axs[0, 1].set_title('vy over time')
+
+        axs[0, 2].plot(time, vtheta, color='r')
+        axs[0, 2].set_xlabel('Time Step')
+        axs[0, 2].set_ylabel('Velocity theta (rad/s)')
+        axs[0, 2].set_title('vtheta over time')
+
+        # Tracking error graphs
+        axs[1, 0].plot(time, error_x, 'r-', linewidth=2, label='X Error')
+        axs[1, 0].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        axs[1, 0].fill_between(time, 0, error_x, alpha=0.3, color='red')
+        axs[1, 0].set_xlabel('Time Step')
+        axs[1, 0].set_ylabel('Error (meters)')
+        axs[1, 0].set_title('X Position Error vs Path')
+        axs[1, 0].grid(True, alpha=0.3)
+        axs[1, 0].legend()
+
+        axs[1, 1].plot(time, error_y, 'b-', linewidth=2, label='Y Error')
+        axs[1, 1].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        axs[1, 1].fill_between(time, 0, error_y, alpha=0.3, color='blue')
+        axs[1, 1].set_xlabel('Time Step')
+        axs[1, 1].set_ylabel('Error (meters)')
+        axs[1, 1].set_title('Y Position Error vs Path')
+        axs[1, 1].grid(True, alpha=0.3)
+        axs[1, 1].legend()
+
+        axs[1, 2].plot(time, error_theta, 'g-', linewidth=2, label='Theta Error')
+        axs[1, 2].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        axs[1, 2].fill_between(time, 0, error_theta, alpha=0.3, color='green')
+        axs[1, 2].set_xlabel('Time Step')
+        axs[1, 2].set_ylabel('Error (radians)')
+        axs[1, 2].set_title('Theta (Angle) Error vs Path')
+        axs[1, 2].grid(True, alpha=0.3)
+        axs[1, 2].legend()
+
+        plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+        plt.savefig('velocity_and_tracking_errors.png', dpi=150, bbox_inches='tight')
+        plt.show()
+
+                
     def run(self):
         """Run complete controller test."""
         print("=" * 60)
@@ -561,27 +601,18 @@ class ControllerTester:
         path = self.plan_path()
         if path is None:
             return
-        
         # Generate trajectory
         ref_traj: np.ndarray = self.generate_trajectory(path)
-        
         # Simulate controller
         executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj)
-        
         # Visualize
         print("\nVisualizing results...")
         self.visualize(path, executed_states, ref_traj, reference_states)
-        
         print("\n" + "=" * 60)
         print("TEST COMPLETE")
         print("=" * 60)
 
-
 if __name__ == "__main__":
-    # # Redirect stdout and stderr to log.txt
-    # log_file = open("log.txt", "w", encoding="utf-8")
-    # sys.stdout = log_file
-    # sys.stderr = log_file
     try:
         tester = ControllerTester()
         tester.run()
@@ -589,6 +620,5 @@ if __name__ == "__main__":
         print(f"\n✗ Error during controller testing: {e}")
         import traceback
         traceback.print_exc()
-    # finally:
-    #     log_file.close()
+
 

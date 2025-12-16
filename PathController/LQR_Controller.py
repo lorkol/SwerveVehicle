@@ -4,16 +4,15 @@ from PathController.Controller import Controller, LocalPlanner, NP3DPoint
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
-from typing import List
+from typing import Callable, List
 
 from Types import NP3DPoint, State6D
 
 class LQRController(Controller):
-    def __init__(self, robot_controller: ActuatorController, local_planner: LocalPlanner, Q: List[float], R: List[float], v_desired: float = 1.0, dt: float = 0.1):
+    def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], Q: List[float], R: List[float], dt: float = 0.1):
         super().__init__(robot_controller)
-        self._local_planner: LocalPlanner = local_planner
+        self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         # Tuning Parameters # TODO: from parameters
-        self._v_desired: float = v_desired  # m/s
         self._dt: float = dt
 
         # 1. Linearized Model (Double Integrator in Global Frame)
@@ -46,7 +45,7 @@ class LQRController(Controller):
         current_state_global: State6D = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
         # --- 2. Reference Generation ---
-        carrot_state: State6D = self._local_planner.get_reference_state(state[:3])
+        carrot_state: State6D = self.get_reference_method(state[:3])
         
         # --- 3. Construct LQR Reference (The "Masking" Step) ---
         ref_state: State6D = np.zeros(6)
@@ -131,4 +130,4 @@ class LQRController(Controller):
     
     def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
-        return self._local_planner.get_reference_state(current_pose)
+        return self.get_reference_method(current_pose)
