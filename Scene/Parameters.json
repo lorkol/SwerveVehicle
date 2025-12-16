@@ -55,7 +55,7 @@
             },
             "Controller":
             {
-                "type": "SMC"
+                "type": "LQR"
             },           
             "MRAC":
             {
@@ -82,7 +82,7 @@
             {
                 "dt": 0.1,
                 "lambda_gains": [2.0, 2.0, 2.0],
-                "k_gains": [5.0, 5.0, 5.0],
+                "k_gains": [20.0, 20.0, 20.0],
                 "boundary_layer": 0.1
             }
         },
@@ -147,7 +147,10 @@
         },
         "Dynamic Disturbance":
         {
-            "Enable": false
+            "Enable": true,
+            "Max x Force": 5.0,
+            "Max y Force": 5.0,
+            "Max Torque": 1.0
         }
     }
 }

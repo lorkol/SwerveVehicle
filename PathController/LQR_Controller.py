@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.linalg
-from PathController.Controller import Controller, LocalPlanner, NP3DPoint
+from PathController.Controller import Controller, NP3DPoint
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from typing import Callable, List
@@ -122,7 +122,7 @@ class LQRController(Controller):
 
     def is_stabilized(self, current_state: State6D, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
         # Check if position error and velocity error are within tolerances
-        pos_error: float = np.linalg.norm(current_state[0:3] - self._local_planner.get_reference_state(current_state[:3])[0:3]) # type: ignore
+        pos_error: float = np.linalg.norm(current_state[0:3] - self.get_reference_state(current_state[:3])[0:3]) # type: ignore
         vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
         return (pos_error < pos_tol) and (vel_error < vel_tol)
     

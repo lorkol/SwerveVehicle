@@ -25,7 +25,7 @@ class Robot_Sim:
         # TODO: Get from parameters file
         self._dt: float = dt  # Simulation timestep
         
-    def propagate(self, state: State_Vector, control_input: Control_Vector) -> State_Vector:
+    def propagate(self, state: State_Vector, control_input: Control_Vector, noise: np.ndarray = np.zeros(3)) -> State_Vector:
         """
         Propagate state forward using kinematic equations that incorporate acceleration.
         
@@ -57,7 +57,10 @@ class Robot_Sim:
         
         # Calculate accelerations from actuator controller
         a_x, a_y, alpha = self._actuator_controller.get_accels_in_world(state, wheel_angles, wheel_torques)
-        
+        a_x += noise[0]/self._robot.mass  # Add disturbance force in x
+        a_y += noise[1]/self._robot.mass  # Add disturbance force in y
+        alpha += noise[2]/self._robot.inertia  # Add disturbance torque
+                
         # Update positions using kinematic equations with acceleration terms
         # Position change = velocity*dt + 0.5*acceleration*dt²
         x_new: float = x + vx * self._dt + 0.5 * a_x * self._dt**2

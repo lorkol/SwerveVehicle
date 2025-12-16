@@ -33,7 +33,7 @@ from PathPlanning.AStarPlanner import AStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
 from typing import Any, Dict, Optional, Tuple
 
-from Uncertainties.uncertainty import add_state_estimation_uncertainty
+from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
 
 
 class ControllerTester:      
@@ -153,7 +153,6 @@ class ControllerTester:
         if controller_type == ControllerTypes.LQR:
             # Use a reduced lookahead for the LQR to keep references closer
             # This helps avoid large overshoots when approaching the final goal.
-            v_desired: float = controller_params["v_desired"] # TODO: Check consistency in v_desired with local planner
             Q = controller_params["Q"]
             R = controller_params["R"]
             controller: Controller = LQRController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, Q=Q, R=R)
@@ -203,16 +202,23 @@ class ControllerTester:
             reference_states.append(ref_state.copy())
             # Compute control from controller
             if self.state_uncertainty["Enable"]:
-                noise = add_state_estimation_uncertainty(self.state_uncertainty["Position Noise StdDev"], self.state_uncertainty["Orientation Noise StdDev"], 
-                                                         self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
-                measured_state = current_state + noise
+                state_noise = add_state_estimation_uncertainty(self.state_uncertainty["Position Noise StdDev"], self.state_uncertainty["Orientation Noise StdDev"], 
+                                                               self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
+                measured_state = current_state + state_noise
             else:
                 measured_state = current_state.copy()
 
             control_input = controller.get_command(measured_state)
             executed_controls.append(control_input.copy())
             # Propagate state using robot simulator
-            new_state = robot_sim.propagate(current_state, control_input)
+            noise_params = self.params["Noise"]
+            if noise_params["Dynamic Disturbance"]["Enable"]:
+                disturbance_noise = add_force_uncertainty(noise_params["Dynamic Disturbance"]["Max x Force"],
+                                                          noise_params["Dynamic Disturbance"]["Max y Force"], 
+                                                          noise_params["Dynamic Disturbance"]["Max Torque"])
+            else:
+                disturbance_noise = np.zeros(3)
+            new_state = robot_sim.propagate(current_state, control_input, noise=disturbance_noise)
             executed_states.append(new_state.copy())
 
             # Print wheel angles (delta1, delta2, delta3, delta4)
