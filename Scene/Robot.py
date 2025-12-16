@@ -1,8 +1,4 @@
 from typing import Any, Dict, Optional
-import random
-
-import numpy as np
-
 from Uncertainties.uncertainty import create_parameter_uncertainty_multiplier
 
 class Robot:
@@ -26,9 +22,6 @@ class Robot:
         if noise_params is not None:
             if noise_params["Enable"]:
                 print("Applying parameter uncertainties to robot:")
-                # self.mass += random.uniform(-noise_params["mass_uncertainty"], noise_params["mass_uncertainty"]) * self.mass
-                # self.inertia += random.uniform(-noise_params["inertia_uncertainty"], noise_params["inertia_uncertainty"]) * self.inertia
-                # self.wheel_radius += random.uniform(-noise_params["wheel_radius_uncertainty"], noise_params["wheel_radius_uncertainty"]) * self.wheel_radius
                 self.mass =  create_parameter_uncertainty_multiplier(noise_params["mass_uncertainty"]) * self.mass
                 self.inertia = create_parameter_uncertainty_multiplier(noise_params["inertia_uncertainty"]) * self.inertia
                 self.wheel_radius = create_parameter_uncertainty_multiplier(noise_params["wheel_radius_uncertainty"]) * self.wheel_radius

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Optional
+from typing import  Optional
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from Types import OptionalPathType, PathType, State2D
 from dataclasses import dataclass

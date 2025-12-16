@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 import random
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 import numpy as np
 

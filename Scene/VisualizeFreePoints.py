@@ -9,7 +9,6 @@ from pathlib import Path
 # Add parent directory to path so imports work from Scene folder
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import json
 import math
 import random
 from typing import List, Tuple
@@ -50,7 +49,7 @@ class FreePointFinder:
     
     def is_point_free(self, x: float, y: float, theta: float = 0.0) -> bool:
         """Check if a point is collision-free."""
-        state = (x, y, theta)
+        state = np.array([x, y, theta])
         return not self.obstacle_checker.is_collision(state)
     
     def find_free_points(self, num_points: int = 10, num_candidates: int = 5000, 

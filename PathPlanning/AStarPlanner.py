@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import heapq
 import math
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 import numpy as np
 
