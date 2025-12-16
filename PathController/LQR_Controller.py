@@ -2,7 +2,6 @@ import numpy as np
 import scipy.linalg
 from PathController.Controller import Controller, LocalPlanner, NP3DPoint
 from ActuatorController.ActuatorController import ActuatorController
-from PathController.PathReference import ProjectedPathFollower
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from typing import Callable, List
 

@@ -16,7 +16,6 @@ from PathController.MPPI.MPPI_Controller import MPPIController
 from PathController.Controller import Controller, ControllerTypes, LocalPlanner, LocalPlannerTypes
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
-from PathController.PathReference import ProjectedPathFollower
 
 from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
 
@@ -247,7 +246,7 @@ class ControllerTester:
                 speed = np.sqrt(current_state[3]**2 + current_state[4]**2)
                 print(f"  Step {step + 1}: Position ({current_state[0]:.2f}, {current_state[1]:.2f}), Speed {speed:.3f} m/s, Heading {math.degrees(current_state[2]):.2f}°, torques: {control_input[:4]}")
                 if control_input[0] < 1e-3 and control_input[1] < 1e-3 and control_input[2] < 1e-3 and control_input[3] < 1e-3:
-                    controller.get_command(current_state, debug=True)
+                    controller.get_command(current_state, debug=True) #type: ignore
             step += 1
         
         executed_states = np.array(executed_states)
