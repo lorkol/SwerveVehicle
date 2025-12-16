@@ -24,10 +24,7 @@ class PurePursuitController(LocalPlanner):
         self._dt: float = dt  # seconds
             # State tracking to prevent searching backwards
         self._last_index: int = 0 
-        self._max_search_window: int = 100 # Optimize search for long paths # TODO: Get from parameters
-        
-        
-                  
+        self._max_search_window: int = 100 # Optimize search for long paths # TODO: Get from parameters                  
         
     def get_reference_state(self, current_pose: NP3DPoint, debug: bool = False) -> State6D:
         """

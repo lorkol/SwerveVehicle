@@ -10,6 +10,7 @@ from matplotlib.transforms import Affine2D
 
 from ActuatorController.ActuatorController import ActuatorController
 
+from PathController.PathReference import SimpleReferenceGenerator
 from PathController.PurePursuit import PurePursuitController
 from PathController.Robot_Sim import Robot_Sim
 from PathController.MPPI.MPPI_Controller import MPPIController
@@ -31,12 +32,12 @@ from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
 # from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
 
 
-class ControllerTester:      
+class Simulation:      
     """Test Planning and Controlling."""
     DEBUG = True  # Set to False to remove all debug prints
     
@@ -45,16 +46,7 @@ class ControllerTester:
         self.config: Dict[str, Any] = load_json(config_path)
         self.params: Dict[str, Any] = load_json(params_path)
         
-        noise_params: Dict[str, Any] = self.params["Noise"]
-        self.state_uncertainty: Dict[str, Any] = noise_params["State Estimation Uncertainty"]
-        # Create robot and map
-        self.robot_est = Robot(self.config["Robot"])
-        """The Estimation we have of our robot"""
-        self.robot_true = Robot(self.config["Robot"], noise_params["Parameter Uncertainty"])
-        '''True robot - with possible uncertainties'''
-        print(f"mass difference: {self.robot_true.mass - self.robot_est.mass}, inertia difference: {self.robot_true.inertia - self.robot_est.inertia}, wheel radius difference: {self.robot_true.wheel_radius - self.robot_est.wheel_radius}")
-        self.map_obj = Map(self.config["Map"])
-        self.world_bounds = ((0, self.map_obj.length), (0, self.map_obj.width))
+        self.init_scene()
         
         # Create obstacle checker
         self.obstacle_checker = StaticObstacleChecker(robot=self.robot_est, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False)
@@ -66,11 +58,25 @@ class ControllerTester:
         # Define start and goal        
         self.start = self.params["Problem Statement"]["Start"]  # (x, y, theta)
         self.goal = self.params["Problem Statement"]["Goal"]  # (x, y, theta)
+        
         self.planner: Planner = self.get_planner()
 
         self.dt: float = self.params["Control"]["dt"]  # Default dt if not specified
         
+        self.controller: Controller = None # type: ignore # Will be created after path is planned
     
+    def init_scene(self):
+        noise_params: Dict[str, Any] = self.params["Noise"]
+        self.state_uncertainty: Dict[str, Any] = noise_params["State Estimation Uncertainty"]
+        # Create robot and map
+        self.robot_est = Robot(self.config["Robot"])
+        """The Estimation we have of our robot"""
+        self.robot_true = Robot(self.config["Robot"], noise_params["Parameter Uncertainty"])
+        '''True robot - with possible uncertainties'''
+        print(f"mass difference: {self.robot_true.mass - self.robot_est.mass}, inertia difference: {self.robot_true.inertia - self.robot_est.inertia}, wheel radius difference: {self.robot_true.wheel_radius - self.robot_est.wheel_radius}")
+        self.map_obj = Map(self.config["Map"])
+        self.world_bounds = ((0, self.map_obj.length), (0, self.map_obj.width))
+        
     def get_planner(self) -> Planner:
         """Get planner based on parameters."""
         planner_config = self.params["Path Planning"]
@@ -85,15 +91,15 @@ class ControllerTester:
             params = planner_config["RRTStarPlanner"]
             return RRTStarPlanner(obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds, step_size=params["step_size"], goal_sample_rate=params["goal_sample_rate"], rewire_radius_factor=params["rewire_radius_factor"], timeout=params["timeout"])
         elif planner_type == "HybridAStarPlanner":
+            #Not working currently
+            # params = planner_config["HybridAStarPlanner"]
+            # return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
             raise NotImplementedError("HybridAStarPlanner is not yet implemented in this tester.")
-        #Not working currently
-        #     params = planner_config["HybridAStarPlanner"]
-        #     return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         elif planner_type == "DStarPlanner":
-            raise NotImplementedError("DStarPlanner is not yet implemented in this tester.")
-        #Not working currently
+            #Not working currently
             # params = planner_config["DStarPlanner"]
             # return DStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
+            raise NotImplementedError("DStarPlanner is not yet implemented in this tester.")
         else:
             raise ValueError(f"Unknown planner type: {planner_type}")
     
@@ -110,64 +116,69 @@ class ControllerTester:
         print(f"[OK] Path found with {len(path)} waypoints")
         return path
     
+    def _get_local_planner_reference_state_method(self, path) -> Callable:
+        try:
+            controller_params: Dict[str, Any] = self.params["Control"]["Cascading Controllers"] # TODO: Currently only using Cascading Controllers, add a way to choose
+            local_planner_params: Dict[str, Any] = controller_params["LocalPlanner"]
+            local_planner_str = local_planner_params["type"]
+            local_planner_type = LocalPlannerTypes(local_planner_str)
+            if local_planner_type == LocalPlannerTypes.PurePursuit:
+                local_planner_params = local_planner_params[local_planner_type.value]
+                lookahead = local_planner_params["lookahead"]
+                v_desired = local_planner_params["v_desired"]
+                pure_pursuit = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path, lookahead=lookahead, v_desired=v_desired, dt=self.dt)
+                return pure_pursuit.get_reference_state
+            else:
+                raise NotImplementedError # TODO: Implement other traj generators
+        except KeyError:
+            raise NotImplementedError # TODO: Make a default traj generator
+        
     def get_controller(self, path = None) -> Controller:
         """Get controller based on parameters."""
         controller_params: Dict[str, Any] = self.params["Control"]
         controller_params = controller_params["Cascading Controllers"] # TODO: Currently only using this, add a way to choose
-        local_planner_params: Dict[str, Any] = controller_params["LocalPlanner"]
-        local_planner_str = local_planner_params["type"]
         controller_type_str = controller_params["Controller"]["type"]
         try:
             controller_type = ControllerTypes(controller_type_str)
-            local_planner_type = LocalPlannerTypes(local_planner_str)
         except (ValueError, KeyError):
-            print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController or PurePursuitController as default.")
+            print(f"Warning: Unknown controller type '{controller_type_str}', using LQRController as default.")
             controller_type = ControllerTypes.LQR
-            local_planner_type = LocalPlannerTypes.PurePursuit
         controller_params = controller_params[controller_type.value]
-        local_planner_params = local_planner_params[local_planner_type.value]
         # Create robot simulator
         dt: float = self.dt
-        if local_planner_type == LocalPlannerTypes.PurePursuit:
-            if path is None:
-                raise RuntimeError("No path found for controller creation.")
-            local_planner = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path,
-                                                  lookahead=local_planner_params["lookahead"], v_desired=local_planner_params["v_desired"], dt=dt)
-        else:
-            raise NotImplementedError("Only PurePursuit local planner is implemented in this tester.")
         
         if controller_type == ControllerTypes.LQR:
             # Use a reduced lookahead for the LQR to keep references closer
             # This helps avoid large overshoots when approaching the final goal.
             Q = controller_params["Q"]
             R = controller_params["R"]
-            controller: Controller = LQRController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, Q=Q, R=R)
+            controller: Controller = LQRController(robot_controller=self.actuator_controller_est, get_reference_method=self._get_local_planner_reference_state_method(path), dt=dt, Q=Q, R=R)
         elif controller_type == ControllerTypes.MRAC:
             gamma: float = controller_params["gamma"]
             kp: float = controller_params["kp"]
             kv: float = controller_params["kv"]
             alpha_min: float = controller_params["alpha_min"]
             alpha_max: float = controller_params["alpha_max"]
-            controller: Controller = MRACController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
+            controller: Controller = MRACController(robot_controller=self.actuator_controller_est, get_reference_method=self._get_local_planner_reference_state_method(path), dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
         elif controller_type == ControllerTypes.SMC:
             k_gains: np.ndarray = controller_params["k_gains"]
             lambda_gains: np.ndarray = controller_params["lambda_gains"]
             boundary_layer: float = controller_params["boundary_layer"]
-            controller: Controller = SMCController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, k_gains=k_gains, lambda_gains=lambda_gains, boundary_layer=boundary_layer)
+            controller: Controller = SMCController(robot_controller=self.actuator_controller_est, get_reference_method=self._get_local_planner_reference_state_method(path), k_gains=k_gains, lambda_gains=lambda_gains, boundary_layer=boundary_layer)
         else: #MPPI or others
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
         
         return controller
     
-    def simulate_controller(self, path: PathType, ref_traj: np.ndarray, dt:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def simulate_controller(self, ref_traj: np.ndarray, dt:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Simulate controller following the given path and reference trajectory."""
         # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
 
-        # Create Controller
-        
+        assert self.controller is not None, "Controller not initialized. Call get_controller() first."
+                
         robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
-        controller = self.get_controller(path)
+
         
         # Get stabilization radius from parameters (default 1.0)
         stabilization_radius = self.params["Control"]["StabilizationRadius"]
@@ -195,7 +206,7 @@ class ControllerTester:
         print(f"\nSimulating controller (real-time timeout: {max_time}s, dt: {dt_sim})...")
         while True:
             # Get reference state from path follower for debugging
-            ref_state = controller.get_reference_state(current_state[:3])
+            ref_state = self.controller.get_reference_state(current_state[:3])
             reference_states.append(ref_state.copy())
             # Compute control from controller
             if self.state_uncertainty["Enable"]:
@@ -205,7 +216,7 @@ class ControllerTester:
             else:
                 measured_state = current_state.copy()
 
-            control_input = controller.get_command(measured_state)
+            control_input = self.controller.get_command(measured_state)
             executed_controls.append(control_input.copy())
             # Propagate state using robot simulator
             noise_params = self.params["Noise"]
@@ -236,7 +247,7 @@ class ControllerTester:
                 dists = np.linalg.norm(recent_states[:, :2] - np.array(self.goal[:2]), axis=1)
                 if np.all(dists < stabilization_radius):
                     stabilized_by_window = True
-            if controller.is_stabilized(current_state + noise) or stabilized_by_window:
+            if self.controller.is_stabilized(current_state + noise) or stabilized_by_window:
                 print(f"[OK] Controller stabilized at step {step+1} (sim t={dt_sim*(step+1):.2f}s, real t={time.time()-start_time:.2f}s)")
                 if stabilized_by_window:
                     print(f"[INFO] Stabilization detected: last {stabilization_window} states all within {stabilization_radius}m of goal.")
@@ -425,8 +436,8 @@ class ControllerTester:
                 ax1.arrow(x, y, dx, dy, head_width=0.4, head_length=0.2, fc='orange', ec='darkorange', alpha=0.7, zorder=6)
             
             # Draw robot rectangles at regular intervals
-            robot_length = self.robot_est.length
-            robot_width = self.robot_est.width
+            robot_length = self.robot_true.length
+            robot_width = self.robot_true.width
             num_total = 20  # total rectangles to draw
             num_pre90 = 10   # at least 10 before 90% progress
             # Compute cumulative path length
@@ -524,7 +535,6 @@ class ControllerTester:
         # Show velocity and error plots in a second popup
         self.plot_velocities_and_errors(executed_states, error_x, error_y, error_theta, cross_track_errors)
     
-
     def plot_velocities_and_errors(self, executed_states: np.ndarray, error_x, error_y, error_theta, cross_track_errors):
         """
         Plots velocity and tracking error graphs in a single popup window.
@@ -591,7 +601,6 @@ class ControllerTester:
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
         plt.savefig('velocity_and_tracking_errors.png', dpi=150, bbox_inches='tight')
         plt.show()
-
         
     def generate_trajectory(self, path: PathType) -> np.ndarray:
         """Return the path as a (3, N) array for plotting as the reference trajectory."""
@@ -611,7 +620,8 @@ class ControllerTester:
         # Generate trajectory
         ref_traj: np.ndarray = self.generate_trajectory(path)
         # Simulate controller
-        executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj, dt=self.dt)
+        self.controller = self.get_controller(path) # TODO: Change architecture for possible changing path for replanning situations
+        executed_states, executed_controls, reference_states = self.simulate_controller(ref_traj, dt=self.dt)
         # Visualize
         print("\nVisualizing results...")
         self.visualize(path, executed_states, ref_traj, reference_states)
@@ -621,7 +631,7 @@ class ControllerTester:
 
 if __name__ == "__main__":
     try:
-        tester = ControllerTester()
+        tester = Simulation()
         tester.run()
     except Exception as e:
         print(f"\n✗ Error during controller testing: {e}")
