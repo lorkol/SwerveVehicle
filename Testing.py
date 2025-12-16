@@ -64,8 +64,8 @@ class ControllerTester:
         self.actuator_controller_true = ActuatorController(self.robot_true)
 
         # Define start and goal        
-        self.start = (5.0, 5.0, 0.0)
-        self.goal = (self.map_obj.length - 20.0, self.map_obj.width - 20.0, 0.0)
+        self.start = self.params["Problem Statement"]["Start"]  # (x, y, theta)
+        self.goal = self.params["Problem Statement"]["Goal"]  # (x, y, theta)
         self.planner: Planner = self.get_planner()
 
         
@@ -85,10 +85,12 @@ class ControllerTester:
             return RRTStarPlanner(obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds, step_size=params["step_size"], goal_sample_rate=params["goal_sample_rate"], rewire_radius_factor=params["rewire_radius_factor"], timeout=params["timeout"])
         elif planner_type == "HybridAStarPlanner":
             raise NotImplementedError("HybridAStarPlanner is not yet implemented in this tester.")
+        #Not working currently
         #     params = planner_config["HybridAStarPlanner"]
         #     return HybridAStarPlanner(grid_resolution=params["grid_resolution"], angle_bins=params["angle_bins"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         elif planner_type == "DStarPlanner":
             raise NotImplementedError("DStarPlanner is not yet implemented in this tester.")
+        #Not working currently
             # params = planner_config["DStarPlanner"]
             # return DStarPlanner(grid_resolution=params["grid_resolution"], angle_resolution=params["angle_resolution"], obstacle_checker=self.obstacle_checker, world_bounds=self.world_bounds)
         else:
@@ -107,26 +109,8 @@ class ControllerTester:
         print(f"[OK] Path found with {len(path)} waypoints")
         return path
     
-    def generate_trajectory(self, path: PathType) -> np.ndarray:
-        """Return the path as a (3, N) array for plotting as the reference trajectory."""
-        arr = np.array(path).T  # shape (3, N)
-        return arr
-
-    def simulate_controller(self, path: PathType, ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Simulate MPPI controller following reference trajectory with rolling horizon."""
-        # Debug: Check path endpoint
-        print(f"\n[DEBUG] PathFollower path check:")
-        print(f"  Original goal: ({self.goal[0]:.4f}, {self.goal[1]:.4f})")
-        print(f"  Path last point: ({path[-1][0]:.4f}, {path[-1][1]:.4f})")
-        
-        # Ensure path ends exactly at the intended goal (prevent small shifts)
-        try:
-            path[-1] = (self.goal[0], self.goal[1], self.goal[2])
-        except Exception:
-            pass
-        # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
-
-        # Create Controller
+    def get_controller(self, path = None) -> Controller:
+        """Get controller based on parameters."""
         controller_params: Dict[str, Any] = self.params["Control"]
         controller_params = controller_params["Cascading Controllers"] # TODO: Currently only using this, add a way to choose
         local_planner_params: Dict[str, Any] = controller_params["LocalPlanner"]
@@ -143,8 +127,9 @@ class ControllerTester:
         local_planner_params = local_planner_params[local_planner_type.value]
         # Create robot simulator
         dt: float = controller_params["dt"]
-        robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
         if local_planner_type == LocalPlannerTypes.PurePursuit:
+            if path is None:
+                raise RuntimeError("No path found for controller creation.")
             local_planner = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path,
                                                   lookahead=local_planner_params["lookahead"], v_desired=local_planner_params["v_desired"], dt=local_planner_params["dt"])
         else:
@@ -171,6 +156,17 @@ class ControllerTester:
         else: #MPPI or others
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")
+        
+        return controller
+    
+    def simulate_controller(self, path: PathType, ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Simulate controller following the given path and reference trajectory."""
+        # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
+
+        # Create Controller
+        
+        robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
+        controller = self.get_controller()
         
         # Get stabilization radius from parameters (default 1.0)
         stabilization_radius = self.params["Control"]["StabilizationRadius"]
@@ -595,7 +591,12 @@ class ControllerTester:
         plt.savefig('velocity_and_tracking_errors.png', dpi=150, bbox_inches='tight')
         plt.show()
 
-                
+        
+    def generate_trajectory(self, path: PathType) -> np.ndarray:
+        """Return the path as a (3, N) array for plotting as the reference trajectory."""
+        arr = np.array(path).T  # shape (3, N)
+        return arr
+            
     def run(self):
         """Run complete controller test."""
         print("=" * 60)
