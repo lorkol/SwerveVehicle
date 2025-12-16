@@ -102,10 +102,10 @@ class SMCController(Controller):
         return control_vec
     
     def get_reference_state(self, current_pose: State_Vector) -> State_Vector:
-        return self.local_planner.get_reference_state(current_pose)
+        return self.get_reference_method(current_pose)
     
     def is_stabilized(self, current_state: State_Vector, pos_tol: float = 0.01, vel_tol: float = 0.0001) -> bool:
         # Check if position error and velocity error are within tolerances
-        pos_error: float = np.linalg.norm(current_state[0:3] - self.local_planner.get_reference_state(current_state[:3])[0:3]) # type: ignore
+        pos_error: float = np.linalg.norm(current_state[0:3] - self.get_reference_method(current_state[:3])[0:3]) # type: ignore
         vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
         return (pos_error < pos_tol) and (vel_error < vel_tol)
