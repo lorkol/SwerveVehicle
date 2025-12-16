@@ -1,14 +1,14 @@
 
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.LocalPlanners.LocalPlanner import LocalPlanner
-from Types import State2D, State6D, NP3DPoint
-from typing import List, Tuple, Optional
+from Types import PathType, State2D, State6D
+from typing import List, Tuple
 import numpy as np
 import math
 
 
 class PurePursuitController(LocalPlanner):
-    def __init__(self, robot_controller: ActuatorController, path_points: List[State2D], lookahead: float = 0.5, v_desired: float = 1.0, dt: float = 0.1):
+    def __init__(self, robot_controller: ActuatorController, path_points: PathType, lookahead: float = 0.5, v_desired: float = 1.0, dt: float = 0.1):
         """
         Pure Pursuit Reference Generator for Cascaded Control.
         
@@ -26,7 +26,7 @@ class PurePursuitController(LocalPlanner):
         self._last_index: int = 0 
         self._max_search_window: int = 100 # Optimize search for long paths # TODO: Get from parameters                  
         
-    def get_reference_state(self, current_pose: NP3DPoint, debug: bool = False) -> State6D:
+    def get_reference_state(self, current_pose: State2D, debug: bool = False) -> State6D:
         """
         Calculates the 6D Reference State for the LQR Controller.
         
@@ -81,7 +81,7 @@ class PurePursuitController(LocalPlanner):
         end_search: int = min(self._last_index + self._max_search_window, len(self.path))
         
         best_idx: int = self._last_index
-        best_point: NP3DPoint = np.array(self.path[self._last_index])
+        best_point: State2D = np.array(self.path[self._last_index])
         found_intersection: bool = False
         final_point = self.path[-1]
         dist_to_end = np.hypot(final_point[0] - rx, final_point[1] - ry)
@@ -91,11 +91,11 @@ class PurePursuitController(LocalPlanner):
 
         # Iterate through path segments
         for i in range(self._last_index, end_search - 1):
-            p1: NP3DPoint = np.array(self.path[i])     # Start of segment
-            p2: NP3DPoint = np.array(self.path[i + 1]) # End of segment
+            p1: State2D = np.array(self.path[i])     # Start of segment
+            p2: State2D = np.array(self.path[i + 1]) # End of segment
             
             # Check intersection between Segment (p1, p2) and Circle (rx, ry, L)
-            intersections: List[NP3DPoint] = self._circle_segment_intersection(p1, p2, rx, ry, L)
+            intersections: PathType = self._circle_segment_intersection(p1, p2, rx, ry, L)
             
             if intersections:
                 # If valid intersections exist, pick the one furthest along the segment
@@ -116,7 +116,7 @@ class PurePursuitController(LocalPlanner):
             else:
                 # We are closer than L -> Look forward for the first point outside L
                 for i in range(self._last_index, end_search):
-                    p: NP3DPoint = np.array(self.path[i])
+                    p: State2D = np.array(self.path[i])
                     d: float = np.hypot(p[0] - rx, p[1] - ry)
                     if d > L:
                         best_idx = i
@@ -126,7 +126,7 @@ class PurePursuitController(LocalPlanner):
         if debug: print(f"[PurePursuit] Returning best_idx: {best_idx}, best_point: {best_point}")
         return best_idx, best_point
 
-    def _circle_segment_intersection(self, p1: NP3DPoint, p2: NP3DPoint, rx: float, ry: float, r: float) -> List[NP3DPoint]:
+    def _circle_segment_intersection(self, p1: State2D, p2: State2D, rx: float, ry: float, r: float) -> PathType:
         """
         Math for finding intersection between a line segment and a circle.
         Returns a list of intersection points [x, y, theta] (interpolating theta).
@@ -169,7 +169,7 @@ class PurePursuitController(LocalPlanner):
         sol_y2: float = (-D * dx - abs(dy) * sqrt_disc) / dr**2
         
         candidates: List[Tuple[float, float]] = [(sol_x1 + rx, sol_y1 + ry), (sol_x2 + rx, sol_y2 + ry)]
-        valid_intersections: List[NP3DPoint] = []
+        valid_intersections: PathType = []
         
         # Check which points are actually on the segment p1-p2
         # We can use a dot product or bounding box check

@@ -1,8 +1,8 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Tuple, Optional
-from Types import State2D, State6D, NP3DPoint
+from typing import List
+from Types import State2D, State6D
 from ActuatorController.ActuatorController import ActuatorController
 import numpy as np
 
@@ -15,7 +15,7 @@ class LocalPlanner(ABC):
         self.path: np.ndarray = np.array(path_points)  # Convert path to numpy array for fast operations
         
     @abstractmethod
-    def get_reference_state(self, current_pose: NP3DPoint, debug: bool = False) -> State6D:
+    def get_reference_state(self, current_pose: State2D, debug: bool = False) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
         pass
 
