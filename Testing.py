@@ -165,10 +165,10 @@ class ControllerTester:
             alpha_max: float = controller_params["alpha_max"]
             controller: Controller = MRACController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, dt=dt, gamma=gamma, kp=kp, kv=kv, alpha_min=alpha_min, alpha_max=alpha_max)
         elif controller_type == ControllerTypes.SMC:
-            k_gain: float = controller_params["k_gain"]
-            lambda_gain: float = controller_params["lambda_gain"]
+            k_gains: np.ndarray = controller_params["k_gains"]
+            lambda_gains: np.ndarray = controller_params["lambda_gains"]
             boundary_layer: float = controller_params["boundary_layer"]
-            controller: Controller = SMCController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, k_gain=k_gain, lambda_gain=lambda_gain, boundary_layer=boundary_layer)
+            controller: Controller = SMCController(robot_controller=self.actuator_controller_est, get_reference_method=local_planner.get_reference_state, k_gains=k_gains, lambda_gains=lambda_gains, boundary_layer=boundary_layer)
         else: #MPPI or others
             #controller: Controller = MPPIController(desired_traj=path, robot_sim=robot_sim, collision_check_method=self.obstacle_checker.is_collision, N_Horizon=controller_params["N_Horizon"], lambda_=controller_params["Lambda"], myu=controller_params["myu"], K=controller_params["K"])
             raise NotImplementedError("simulation not implemented in this tester.")

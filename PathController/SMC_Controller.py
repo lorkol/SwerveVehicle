@@ -3,10 +3,9 @@ import numpy as np
 from PathController.Controller import Controller, LocalPlanner
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
-from Types import Point2D
 
 class SMCController(Controller):
-    def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], lambda_gain: float = 2.0, k_gain: float = 5.0, boundary_layer: float = 0.1):
+    def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], lambda_gains: np.ndarray, k_gains: np.ndarray, boundary_layer: float = 0.1):
         self.actuator: ActuatorController = robot_controller
         self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
         
@@ -15,12 +14,13 @@ class SMCController(Controller):
         # Lambda (λ): The slope of the sliding surface. 
         # Determines how fast the error decays once we are "on the rails" (on the surface).
         # Higher = Faster decay, but requires more control authority.
-        self._lambda_gain: np.ndarray = np.diag([lambda_gain, lambda_gain, lambda_gain]) 
+        self._lambda_gain: np.ndarray = np.diag(lambda_gains) 
+
 
         # K (Gain): The switching gain (Aggressiveness).
         # Determines how hard we push to get back to the surface if we are off.
         # Must be larger than the upper bound of your system's disturbances (friction/model error).
-        self._k_gain: np.ndarray = np.diag([k_gain, k_gain, k_gain])
+        self._k_gain: np.ndarray = np.diag(k_gains)
         
         # Phi (Φ): Boundary layer width.
         # Smooths the transition around s=0 to prevent chattering.

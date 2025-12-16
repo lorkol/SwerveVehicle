@@ -81,8 +81,8 @@
             "SMC":
             {
                 "dt": 0.1,
-                "lambda_gain": 2.0,
-                "k_gain": 5.0,
+                "lambda_gains": [2.0, 2.0, 2.0],
+                "k_gains": [5.0, 5.0, 5.0],
                 "boundary_layer": 0.1
             }
         },
