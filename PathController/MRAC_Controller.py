@@ -3,7 +3,7 @@ import numpy as np
 from PathController.Controller import Controller
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
-from Types import NP3DPoint, State6D
+from Types import State2D, State6D
 
 
 class MRACController(Controller):
@@ -132,6 +132,6 @@ class MRACController(Controller):
             vel_error: float = np.linalg.norm(current_state[3:6]) # type: ignore
             return (pos_error < pos_tol) and (vel_error < vel_tol)
         
-    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+    def get_reference_state(self, current_pose: State2D) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
         return self.get_reference_method(current_pose)

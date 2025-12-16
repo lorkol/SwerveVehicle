@@ -71,7 +71,7 @@ class TrajectoryGenerator:
                     reach_th_diff += 2 * np.pi
                 reach_th: float = robot_theta + ratio * reach_th_diff
                 
-                ref_states.append([reach_x, reach_y, reach_th]) # type: ignore
+                ref_states.append(np.array([reach_x, reach_y, reach_th])) # type: ignore
         
         # Now continue with main path following
         current_path_idx: int = closest_idx
@@ -124,7 +124,7 @@ class TrajectoryGenerator:
                     else:
                         continuous_theta = interp_th
                     
-                    ref_states.append([interp_x, interp_y, continuous_theta]) # type: ignore
+                    ref_states.append(np.array([interp_x, interp_y, continuous_theta])) # type: ignore
                     break
                 else:
                     # Segment too short, move to next
@@ -133,12 +133,11 @@ class TrajectoryGenerator:
             
             # If we ran out of path, repeat the goal
             if current_path_idx >= len(global_path) - 1:
-                ref_states.append(global_path[-1])
+                ref_states.append(np.array(global_path[-1]))
         
         # Ensure we have exactly horizon steps
         while len(ref_states) < self._horizon:
-            ref_states.append(global_path[-1])
-
+            ref_states.append(np.array(global_path[-1]))
         # Format for MPPI (State_Size, Horizon)
         ref_np: np.ndarray = np.array(ref_states).T  # Shape (3, Horizon)
         state_dim: int = current_state.shape[0]

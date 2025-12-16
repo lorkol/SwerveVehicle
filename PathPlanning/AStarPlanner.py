@@ -4,10 +4,12 @@ import heapq
 import math
 from typing import List, Tuple, Optional
 
+import numpy as np
+
 
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner
-from Types import OptionalPathType, State2D
+from Types import OptionalPathType, PathType, State2D
 
 
 class AStarPlanner(Planner):
@@ -153,7 +155,7 @@ class AStarPlanner(Planner):
         # Snap angle to nearest angle step
         theta_quant = round(theta / self._angle_resolution) * self._angle_resolution
         theta_quant = self._normalize_angle(theta_quant)
-        return (x_quant, y_quant, theta_quant)
+        return np.array([x_quant, y_quant, theta_quant])
     
     def _get_neighbors(self, state: State2D) -> List[Tuple[State2D, float]]:
         """Generate neighboring states from current state."""
@@ -177,7 +179,7 @@ class AStarPlanner(Planner):
                     new_theta = self._normalize_angle(new_theta)
                     
                     # Quantize to grid to prevent floating point precision issues
-                    new_state = self._quantize_state((new_x, new_y, new_theta))
+                    new_state: State2D = self._quantize_state(np.array([new_x, new_y, new_theta]))
                     
                     # Check bounds
                     if not (x_min <= new_x <= x_max and y_min <= new_y <= y_max):
@@ -226,9 +228,9 @@ class AStarPlanner(Planner):
             angle += 2 * math.pi
         return angle
     
-    def _reconstruct_path(self, node: Node) -> OptionalPathType:
+    def _reconstruct_path(self, node: Node) -> PathType:
         """Reconstruct path from start to current node."""
-        path = []
+        path: PathType = []
         current = node
         while current is not None:
             path.append(current.state)

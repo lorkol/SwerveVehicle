@@ -6,7 +6,8 @@ import numpy as np
 
 Point2D: TypeAlias = Tuple[float, float]
 
-State2D: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
+State2D: TypeAlias = np.ndarray  # (x, y, theta)
+# State2D: TypeAlias = Tuple[float, float, float]  # (x, y, theta)
 '''Represents (x, y, theta) the state of the vehicle in 2D space with orientation.'''
 
 NP3DPoint: TypeAlias = np.ndarray  # shape (3,)

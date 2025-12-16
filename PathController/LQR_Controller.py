@@ -1,11 +1,12 @@
 import numpy as np
 import scipy.linalg
+from PathController.Controller import Controller
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from PathController.Controller import Controller
 from typing import Callable, List
 
-from Types import NP3DPoint, State6D
+from Types import State2D, State6D
 
 class LQRController(Controller):
     def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], Q: List[float], R: List[float], dt: float = 0.1):
@@ -126,6 +127,6 @@ class LQRController(Controller):
         return (pos_error < pos_tol) and (vel_error < vel_tol)
     
     
-    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+    def get_reference_state(self, current_pose: State2D) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
         return self.get_reference_method(current_pose)

@@ -435,7 +435,7 @@ class StaticObstacleChecker(ObstacleChecker):
             angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff))
             theta = theta1 + t * angle_diff
             
-            sample_state = (x, y, theta)
+            sample_state = np.array([x, y, theta])
             
             # Check collision at this sample point
             if self.is_collision(sample_state):

@@ -26,14 +26,14 @@ from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
 
-from Types import PathType, ConvexShape
+from Types import PathType, ConvexShape, State2D
 
 from PathPlanning.Planners import Planner, smooth_path
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
 # from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
 from PathPlanning.DStarPlanner import DStarPlanner
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
 
@@ -59,8 +59,8 @@ class Simulation:
         self.actuator_controller_true = ActuatorController(self.robot_true)
 
         # Define start and goal        
-        self.start = self.params["Problem Statement"]["Start"]  # (x, y, theta)
-        self.goal = self.params["Problem Statement"]["Goal"]  # (x, y, theta)
+        self.start: State2D = np.array(self.params["Problem Statement"]["Start"])  # (x, y, theta)
+        self.goal: State2D = np.array(self.params["Problem Statement"]["Goal"])  # (x, y, theta)
         
         self.planner: Planner = self.get_planner()
 

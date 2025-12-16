@@ -22,7 +22,6 @@ class Robot_Sim:
         self._state = None
         self._robot: Robot = robot
         self._actuator_controller: ActuatorController = actuator
-        # TODO: Get from parameters file
         self._dt: float = dt  # Simulation timestep
         
     def propagate(self, state: State_Vector, control_input: Control_Vector, noise: np.ndarray = np.zeros(3)) -> State_Vector:

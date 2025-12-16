@@ -122,7 +122,7 @@
             "min_obstacles_for_parallel": 10
         },
         "segment_num_samples": 20,
-        "collision_clearance": 0.5
+        "collision_clearance": 0.0
     },
     "Noise":
     {

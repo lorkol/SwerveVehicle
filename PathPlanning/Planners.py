@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Optional
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
-from Types import PathType, State2D
+from Types import OptionalPathType, PathType, State2D
 from dataclasses import dataclass
 
 import numpy as np
@@ -66,18 +66,18 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
         return path
     
     # Store original start and goal before any filtering
-    original_start = path[0]
-    original_goal = path[-1]
+    original_start: State2D = path[0]
+    original_goal: State2D = path[-1]
     
     # Remove duplicate/very close points first
-    unique_points = []
+    unique_points: PathType = []
     for point in path:
         if not unique_points or (abs(point[0] - unique_points[-1][0]) > 1e-6 or 
                                  abs(point[1] - unique_points[-1][1]) > 1e-6):
             unique_points.append(point)
     
     # Ensure original goal is always included
-    if unique_points[-1] != original_goal:
+    if not np.array_equal(unique_points[-1], original_goal):
         unique_points.append(original_goal)
     
     if len(unique_points) < 4:
@@ -98,7 +98,7 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
         (1, 0.0, "linear interpolation"),
     ]
     
-    smoothed = None
+    smoothed: OptionalPathType = None
     successful_strategy = None
     
     for k, s, description in smoothing_strategies:
@@ -126,12 +126,12 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
             
             smoothed_path: PathType = []
             for i in range(len(new_x)):
-                smoothed_path.append((new_x[i], new_y[i], new_theta[i])) # type: ignore
+                smoothed_path.append(np.array([new_x[i], new_y[i], new_theta[i]])) # type: ignore
             
             # IMPORTANT: Force start and goal to be exact original positions (from input path)
             # B-spline with s > 0 approximates but doesn't pass through points exactly
-            smoothed_path[0] = (original_start[0], original_start[1], smoothed_path[0][2])
-            smoothed_path[-1] = (original_goal[0], original_goal[1], original_goal[2])
+            smoothed_path[0] = np.array([original_start[0], original_start[1], smoothed_path[0][2]])
+            smoothed_path[-1] = np.array([original_goal[0], original_goal[1], original_goal[2]])
             
             # Check collisions before accepting this strategy
             has_collision = False
@@ -185,7 +185,7 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
         downsampled = smoothed[::factor]
         
         # Always include the goal
-        if downsampled[-1] != smoothed[-1]:
+        if not np.array_equal(downsampled[-1], smoothed[-1]):
             downsampled.append(smoothed[-1])
         
         # Validate downsampled path with this factor
@@ -224,8 +224,8 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
     # CRITICAL: Guarantee the path ends at the exact original goal position
     # B-spline smoothing and downsampling can shift the endpoint slightly
     # Use the original_start and original_goal saved at the beginning of this function
-    result[0] = (original_start[0], original_start[1], result[0][2])
-    result[-1] = (original_goal[0], original_goal[1], original_goal[2])
+    result[0] = np.array([original_start[0], original_start[1], result[0][2]])
+    result[-1] = np.array([original_goal[0], original_goal[1], original_goal[2]])
     
     print(f"  [DEBUG] smooth_path final check: goal=({original_goal[0]:.4f}, {original_goal[1]:.4f}), result[-1]=({result[-1][0]:.4f}, {result[-1][1]:.4f})")
     
@@ -238,14 +238,14 @@ def theta_smooth_path(path: PathType, obstacle_checker: ObstacleChecker) -> Path
     """
     if len(path) < 2:
         return path
-    smoothed = list(path)
+    smoothed = path.copy()
     n = len(path)
     for i in range(n - 2):
         theta0 = smoothed[i][2]
         # Try to keep theta0 for as long as possible
         for j in range(i + 2, n):
             # Try replacing thetas from i+1 to j with theta0
-            candidate = smoothed[:i+1] + [(smoothed[k][0], smoothed[k][1], theta0) for k in range(i+1, j+1)] + smoothed[j+1:]
+            candidate = smoothed[:i+1] + [np.array([smoothed[k][0], smoothed[k][1], theta0]) for k in range(i+1, j+1)] + smoothed[j+1:]
             collision = False
             for k in range(i, j):
                 if not obstacle_checker.is_path_clear(candidate[k], candidate[k+1]) or obstacle_checker.is_collision(candidate[k+1]):
@@ -254,7 +254,7 @@ def theta_smooth_path(path: PathType, obstacle_checker: ObstacleChecker) -> Path
             if not collision:
                 # Accept this smoothing
                 for k in range(i+1, j+1):
-                    smoothed[k] = (smoothed[k][0], smoothed[k][1], theta0)
+                    smoothed[k] = np.array([smoothed[k][0], smoothed[k][1], theta0])
             else:
                 break
     return smoothed

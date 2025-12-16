@@ -10,6 +10,8 @@ import random
 import time
 from typing import List, Tuple, Optional
 
+import numpy as np
+
 from ObstacleDetection.ObstacleDetector import ObstacleChecker
 from PathPlanning.Planners import Node, Planner, theta_smooth_path
 from Types import OptionalPathType, PathType, State2D
@@ -203,7 +205,7 @@ class RRTStarPlanner(Planner):
         y = random.uniform(y_min, y_max)
         theta = random.uniform(-math.pi, math.pi)
         
-        return (x, y, theta)
+        return np.array([x, y, theta])
     
     def _nearest_node(self, state: State2D) -> Node:
         """Find the nearest node in the tree to the given state."""
@@ -248,7 +250,7 @@ class RRTStarPlanner(Planner):
         
         new_theta = self._normalize_angle(new_theta)
         
-        return (new_x, new_y, new_theta)
+        return np.array([new_x, new_y, new_theta])
     
     def _distance(self, state1: State2D, state2: State2D) -> float:
         """Calculate Euclidean distance between two states (ignoring theta)."""
@@ -300,7 +302,7 @@ class RRTStarPlanner(Planner):
     
     def _reconstruct_path(self, node: Node) -> PathType:
         """Reconstruct path from start to given node."""
-        path = []
+        path: PathType = []
         current = node
         while current is not None:
             path.append(current.state)

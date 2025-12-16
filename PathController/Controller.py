@@ -6,7 +6,7 @@ import numpy as np
 from PathController.Types import Control_Vector
 from enum import Enum
 from ActuatorController.ActuatorController import ActuatorController
-from Types import NP3DPoint, State2D, State6D
+from Types import State2D, State6D
 
 
 class ControllerTypes(Enum):
@@ -32,6 +32,6 @@ class Controller(ABC):
         pass
     
     @abstractmethod
-    def get_reference_state(self, current_pose: NP3DPoint) -> State6D:
+    def get_reference_state(self, current_pose: State2D) -> State6D:
         """Get the reference state for the controller given the current robot pose."""
-        pass
+        pass    
