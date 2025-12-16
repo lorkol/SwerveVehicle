@@ -1,6 +1,10 @@
 from typing import Any, Dict, Optional
 import random
 
+import numpy as np
+
+from Uncertainties.uncertainty import create_parameter_uncertainty_multiplier
+
 class Robot:
     def __init__(self, robot_json_object: Dict[str, Any], noise_params: Optional[Dict[str, Any]] = None) -> None:
         self.length: float = robot_json_object["Dimensions"]["Length"]
@@ -25,6 +29,6 @@ class Robot:
                 # self.mass += random.uniform(-noise_params["mass_uncertainty"], noise_params["mass_uncertainty"]) * self.mass
                 # self.inertia += random.uniform(-noise_params["inertia_uncertainty"], noise_params["inertia_uncertainty"]) * self.inertia
                 # self.wheel_radius += random.uniform(-noise_params["wheel_radius_uncertainty"], noise_params["wheel_radius_uncertainty"]) * self.wheel_radius
-                self.mass += noise_params["mass_uncertainty"] * self.mass
-                self.inertia += noise_params["inertia_uncertainty"] * self.inertia
-                self.wheel_radius += noise_params["wheel_radius_uncertainty"] * self.wheel_radius
+                self.mass =  create_parameter_uncertainty_multiplier(noise_params["mass_uncertainty"]) * self.mass
+                self.inertia = create_parameter_uncertainty_multiplier(noise_params["inertia_uncertainty"]) * self.inertia
+                self.wheel_radius = create_parameter_uncertainty_multiplier(noise_params["wheel_radius_uncertainty"]) * self.wheel_radius

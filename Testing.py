@@ -49,7 +49,9 @@ class Simulation:
         self.init_scene()
         
         # Create obstacle checker
-        self.obstacle_checker = StaticObstacleChecker(robot=self.robot_est, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False)
+        self.obstacle_checker = StaticObstacleChecker(robot=self.robot_est, obstacles=self.map_obj.obstacles, map_limits=self.world_bounds, use_parallelization=False,
+                                                      segment_num_samples=self.params["Obstacle Detection"]["segment_num_samples"],
+                                                      collision_clearance=self.params["Obstacle Detection"]["collision_clearance"])
         
         # Create actuator controller
         self.actuator_controller_est = ActuatorController(self.robot_est)
@@ -171,15 +173,14 @@ class Simulation:
         
         return controller
     
-    def simulate_controller(self, ref_traj: np.ndarray, dt:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def simulate_controller(self, ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Simulate controller following the given path and reference trajectory."""
         # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
 
         assert self.controller is not None, "Controller not initialized. Call get_controller() first."
                 
-        robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
+        robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=self.dt)
 
-        
         # Get stabilization radius from parameters (default 1.0)
         stabilization_radius = self.params["Control"]["StabilizationRadius"]
         stabilization_window = 100
@@ -512,7 +513,6 @@ class Simulation:
         ax1.legend(loc='upper right', fontsize=10)
         ax1.grid(True, alpha=0.3)
         
-
         # Calculate path errors (x, y, theta relative to closest path point)
         error_x, error_y, error_theta = self.calculate_path_errors(executed_states, path)
         cross_track_errors = self.calculate_cross_track_error(executed_states, path)
@@ -606,33 +606,35 @@ class Simulation:
         """Return the path as a (3, N) array for plotting as the reference trajectory."""
         arr = np.array(path).T  # shape (3, N)
         return arr
-            
-    def run(self):
+    
+    def run_single_iteration(self):
         """Run complete controller test."""
         print("=" * 60)
         print("CONTROLLER TEST")
         print("=" * 60)
         
         # Plan path
-        path = self.plan_path()
+        path = self.plan_path() # TODO: Can make a path from another source - what's called in get_controller() if oath is None
         if path is None:
             return
         # Generate trajectory
         ref_traj: np.ndarray = self.generate_trajectory(path)
         # Simulate controller
-        self.controller = self.get_controller(path) # TODO: Change architecture for possible changing path for replanning situations
-        executed_states, executed_controls, reference_states = self.simulate_controller(ref_traj, dt=self.dt)
+        self.controller = self.get_controller(path)
+        executed_states, executed_controls, reference_states = self.simulate_controller(ref_traj)
         # Visualize
         print("\nVisualizing results...")
         self.visualize(path, executed_states, ref_traj, reference_states)
         print("\n" + "=" * 60)
         print("TEST COMPLETE")
         print("=" * 60)
+        
+    # TODO: dynamic controller for possible changing path for replanning situations
 
 if __name__ == "__main__":
     try:
         tester = Simulation()
-        tester.run()
+        tester.run_single_iteration()
     except Exception as e:
         print(f"\n✗ Error during controller testing: {e}")
         import traceback

@@ -116,12 +116,12 @@
     {
         "SimpleObstacleDetector":
         {
-            "path_num_samples": 20,
             "use_only_bounding_circles": false,
             "collision_check_pool_size": 4,
             "enable_parallel_collision_check": false,
             "min_obstacles_for_parallel": 10
         },
+        "segment_num_samples": 20,
         "collision_clearance": 0.5
     },
     "Noise":
