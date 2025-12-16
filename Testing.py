@@ -1,41 +1,36 @@
 import time
 import math
 import numpy as np
-import sys
-
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.transforms import Affine2D
 
+from Types import PathType, ConvexShape, State2D
+from typing import Any, Callable, Dict, Optional, Tuple
 
-from ActuatorController.ActuatorController import ActuatorController
-
-from PathController.LocalPlanners.LocalPlanner import LocalPlanner, LocalPlannerTypes
-from PathController.LocalPlanners.PathReference import SimpleReferenceGenerator
-from PathController.LocalPlanners.PurePursuit import PurePursuitController
-from PathController.Robot_Sim import Robot_Sim
-from PathController.MPPI.MPPI_Controller import MPPIController
-from PathController.Controller import Controller, ControllerTypes
-from PathController.LQR_Controller import LQRController
-from PathController.MRAC_Controller import MRACController
-
-from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
-
-from PathController.SMC_Controller import SMCController
 from Scene.JsonManager import load_json
 from Scene.Map import Map
 from Scene.Robot import Robot
+from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
 
-from Types import PathType, ConvexShape, State2D
+from ActuatorController.ActuatorController import ActuatorController
+
+from ObstacleDetection.ObstacleDetector import StaticObstacleChecker
 
 from PathPlanning.Planners import Planner, smooth_path
 from PathPlanning.RRT_StarPlanner import RRTStarPlanner
 from PathPlanning.AStarPlanner import AStarPlanner
 # from PathPlanning.HybridAStarPlanner import HybridAStarPlanner
-from PathPlanning.DStarPlanner import DStarPlanner
-from typing import Any, Callable, Dict, List, Optional, Tuple
+# from PathPlanning.DStarPlanner import DStarPlanner
 
-from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
+from PathController.Robot_Sim import Robot_Sim
+from PathController.LocalPlanners.LocalPlanner import LocalPlannerTypes
+from PathController.LocalPlanners.PurePursuit import PurePursuitController
+# from PathController.MPPI.MPPI_Controller import MPPIController
+from PathController.Controller import Controller, ControllerTypes
+from PathController.LQR_Controller import LQRController
+from PathController.MRAC_Controller import MRACController
+from PathController.SMC_Controller import SMCController
 
 
 class Simulation:      
