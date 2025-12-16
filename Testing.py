@@ -68,6 +68,7 @@ class ControllerTester:
         self.goal = self.params["Problem Statement"]["Goal"]  # (x, y, theta)
         self.planner: Planner = self.get_planner()
 
+        self.dt: float = self.params["Control"]["dt"]  # Default dt if not specified
         
     
     def get_planner(self) -> Planner:
@@ -126,12 +127,12 @@ class ControllerTester:
         controller_params = controller_params[controller_type.value]
         local_planner_params = local_planner_params[local_planner_type.value]
         # Create robot simulator
-        dt: float = controller_params["dt"]
+        dt: float = self.dt
         if local_planner_type == LocalPlannerTypes.PurePursuit:
             if path is None:
                 raise RuntimeError("No path found for controller creation.")
             local_planner = PurePursuitController(robot_controller=self.actuator_controller_est, path_points=path,
-                                                  lookahead=local_planner_params["lookahead"], v_desired=local_planner_params["v_desired"], dt=local_planner_params["dt"])
+                                                  lookahead=local_planner_params["lookahead"], v_desired=local_planner_params["v_desired"], dt=dt)
         else:
             raise NotImplementedError("Only PurePursuit local planner is implemented in this tester.")
         
@@ -159,14 +160,14 @@ class ControllerTester:
         
         return controller
     
-    def simulate_controller(self, path: PathType, ref_traj: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def simulate_controller(self, path: PathType, ref_traj: np.ndarray, dt:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Simulate controller following the given path and reference trajectory."""
         # For LQR/MRAC, ref_traj is just the path as (3, N) array, so nothing else needed
 
         # Create Controller
         
         robot_sim = Robot_Sim(self.actuator_controller_true, self.robot_true, dt=dt)
-        controller = self.get_controller()
+        controller = self.get_controller(path)
         
         # Get stabilization radius from parameters (default 1.0)
         stabilization_radius = self.params["Control"]["StabilizationRadius"]
@@ -187,7 +188,7 @@ class ControllerTester:
             print(f"[DEBUG] Reference path shape: {ref_traj.shape}")
             print(f"[DEBUG] Ref path first 3 elements (x,y,theta): {ref_traj[:3, 0]}")
         
-        dt_sim = controller_params["dt"]
+        dt_sim: float = self.dt
         max_time = 3  # seconds (real wall-clock time)
         step = 0
         start_time = time.time()
@@ -610,7 +611,7 @@ class ControllerTester:
         # Generate trajectory
         ref_traj: np.ndarray = self.generate_trajectory(path)
         # Simulate controller
-        executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj)
+        executed_states, executed_controls, reference_states = self.simulate_controller(path, ref_traj, dt=self.dt)
         # Visualize
         print("\nVisualizing results...")
         self.visualize(path, executed_states, ref_traj, reference_states)
