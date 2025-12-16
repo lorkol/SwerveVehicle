@@ -169,9 +169,9 @@ class AStarPlanner(Planner):
         for dx in dx_options:
             for dy in dy_options:
                 for dtheta in dtheta_options:
-                    new_x = x + dx
-                    new_y = y + dy
-                    new_theta = theta + dtheta
+                    new_x: float = x + dx
+                    new_y: float = y + dy
+                    new_theta: float = theta + dtheta
                     
                     # Keep theta in [-pi, pi]
                     new_theta = self._normalize_angle(new_theta)
@@ -192,7 +192,7 @@ class AStarPlanner(Planner):
                         continue
                                         
                     # Euclidean cost for motion
-                    motion_cost = math.sqrt(dx**2 + dy**2)
+                    motion_cost: float = math.sqrt(dx**2 + dy**2)
                     
                     neighbors.append((new_state, motion_cost))
         
@@ -214,7 +214,7 @@ class AStarPlanner(Planner):
         x1, y1, theta1 = state1
         x2, y2, theta2 = state2
         
-        eps = 1e-6  # Very small tolerance for floating point
+        eps: float = 1e-6  # Very small tolerance for floating point
         return (abs(x2 - x1) < eps and abs(y2 - y1) < eps and 
                 abs(self._normalize_angle(theta2 - theta1)) < eps)
     

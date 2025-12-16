@@ -241,11 +241,10 @@ class RRTStarPlanner(Planner):
             new_y = y1
         
         # Limit angle change
+        new_theta: float = theta1
         if abs(dtheta) > 0:
             angle_ratio = min(1.0, self._angle_step_size / abs(dtheta))
-            new_theta = theta1 + dtheta * angle_ratio
-        else:
-            new_theta = theta1
+            new_theta += dtheta * angle_ratio
         
         new_theta = self._normalize_angle(new_theta)
         
@@ -285,15 +284,15 @@ class RRTStarPlanner(Planner):
         if num_nodes < 2:
             return self._step_size * 2
         
-        dimension = 3
-        eta = self._rewire_radius_factor * self._step_size
+        dimension: int = 3
+        eta: float = self._rewire_radius_factor * self._step_size
         radius = eta * ((math.log(num_nodes) / num_nodes) ** (1 / dimension))
         
         return max(self._step_size, radius)
     
     def _find_nearby_nodes(self, state: State2D, radius: float) -> List[Node]:
         """Find all nodes within a given radius of the state."""
-        nearby = []
+        nearby: List[Node] = []
         for node in self._tree_nodes:
             if self._distance(node.state, state) <= radius:
                 nearby.append(node)

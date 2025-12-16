@@ -1,8 +1,8 @@
 import numpy as np
 import scipy.linalg
-from PathController.Controller import Controller, NP3DPoint
 from ActuatorController.ActuatorController import ActuatorController
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
+from PathController.Controller import Controller
 from typing import Callable, List
 
 from Types import NP3DPoint, State6D
@@ -11,7 +11,6 @@ class LQRController(Controller):
     def __init__(self, robot_controller: ActuatorController, get_reference_method: Callable[[np.ndarray], np.ndarray], Q: List[float], R: List[float], dt: float = 0.1):
         super().__init__(robot_controller)
         self.get_reference_method: Callable[[np.ndarray], np.ndarray] = get_reference_method
-        # Tuning Parameters # TODO: from parameters
         self._dt: float = dt
 
         # 1. Linearized Model (Double Integrator in Global Frame)

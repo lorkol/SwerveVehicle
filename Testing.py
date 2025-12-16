@@ -10,11 +10,12 @@ from matplotlib.transforms import Affine2D
 
 from ActuatorController.ActuatorController import ActuatorController
 
-from PathController.PathReference import SimpleReferenceGenerator
-from PathController.PurePursuit import PurePursuitController
+from PathController.LocalPlanners.LocalPlanner import LocalPlanner, LocalPlannerTypes
+from PathController.LocalPlanners.PathReference import SimpleReferenceGenerator
+from PathController.LocalPlanners.PurePursuit import PurePursuitController
 from PathController.Robot_Sim import Robot_Sim
 from PathController.MPPI.MPPI_Controller import MPPIController
-from PathController.Controller import Controller, ControllerTypes, LocalPlanner, LocalPlannerTypes
+from PathController.Controller import Controller, ControllerTypes
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
 

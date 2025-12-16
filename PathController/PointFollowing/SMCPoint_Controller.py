@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # PointFollowing->
 
 from Uncertainties.uncertainty import add_force_uncertainty
 
-from PathController.PathReference import ReferenceGenerator, SimpleReferenceGenerator
+from PathController.LocalPlanners.PathReference import ReferenceGenerator, SimpleReferenceGenerator
 # Add project root to sys.path so imports work from anywhere
 
 from typing import TypeAlias

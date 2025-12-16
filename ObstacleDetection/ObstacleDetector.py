@@ -11,6 +11,8 @@ from Types import ConvexShape, State2D, Point2D
 
 class ObstacleChecker(ABC):
     """Abstract base class for obstacle checking - implement with your obstacle detection."""
+    def __init__(self, segment_num_samples: int = 20) -> None:
+        self._segment_num_samples: int = segment_num_samples
     
     @abstractmethod
     def is_collision(self, state: State2D) -> bool:
@@ -31,8 +33,8 @@ Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]
 
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
-    def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False, collision_clearance: float = 0.0) -> None:
-        super().__init__()
+    def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False, segment_num_samples: int = 20, collision_clearance: float = 0.0) -> None:
+        super().__init__(segment_num_samples)
         self._robot: Robot = robot
         self._obstacles: List[Obstacle] = obstacles
         self._map_limits: Tuple[Tuple[float, float], Tuple[float, float]] = map_limits
@@ -402,7 +404,7 @@ class StaticObstacleChecker(ObstacleChecker):
             return False
     
     # TODO: use num_samples from parameters
-    def is_path_clear(self, state1: State2D, state2: State2D, num_samples: int = 20) -> bool:
+    def is_path_clear(self, state1: State2D, state2: State2D) -> bool:
         """
         Check if a straight-line path between two states is collision-free.
         
@@ -412,7 +414,6 @@ class StaticObstacleChecker(ObstacleChecker):
         Args:
             state1: Starting state (x1, y1, theta1)
             state2: Ending state (x2, y2, theta2)
-            num_samples: Number of points to sample along the path (higher = more accurate)
             
         Returns:
             True if path is clear, False if collision detected
@@ -421,8 +422,8 @@ class StaticObstacleChecker(ObstacleChecker):
         x2, y2, theta2 = state2
         
         # Sample points along the path
-        for i in range(num_samples + 1):
-            t = i / num_samples  # Parameter from 0 to 1
+        for i in range(self._segment_num_samples + 1):
+            t = i / self._segment_num_samples  # Parameter from 0 to 1
             
             # Linear interpolation
             x = x1 + t * (x2 - x1)

@@ -1,7 +1,7 @@
 
 from ActuatorController.ActuatorController import ActuatorController
-from PathController.Controller import LocalPlanner
-from Types import NP3DPoint, State2D, State6D
+from PathController.LocalPlanners.LocalPlanner import LocalPlanner
+from Types import State2D, State6D, NP3DPoint
 from typing import List, Tuple, Optional
 import numpy as np
 import math
@@ -138,6 +138,20 @@ class PurePursuitController(LocalPlanner):
         dx: float = x2 - x1
         dy: float = y2 - y1
         dr: float = math.sqrt(dx**2 + dy**2)
+        
+        # NOTE: If p1, p2 share x, y coords and differ only in theta
+        eps = 1e-8
+        if dr < eps:
+            # p1 and p2 are at same (x,y) in circle-centered coords
+            dist_point = math.hypot(x1, y1)  # distance from circle center to the point
+            if abs(dist_point - r) <= 1e-6:
+                # point lies on circle: return intersection at world coords
+                cx_world = x1 + rx
+                cy_world = y1 + ry
+                # choose p2 theta (or return both [p1[2], p2[2]] if desired)
+                return [np.array([cx_world, cy_world, p2[2]])]
+            return []  # no intersection
+        
         D: float = x1 * y2 - x2 * y1
         
         discriminant: float = r**2 * dr**2 - D**2

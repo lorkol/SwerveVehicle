@@ -1,6 +1,6 @@
 from typing import Callable
 import numpy as np
-from PathController.Controller import Controller, LocalPlanner
+from PathController.Controller import Controller
 from PathController.Types import State_Vector, Control_Vector, CONTROL_SIZE
 from ActuatorController.ActuatorController import ActuatorController
 
