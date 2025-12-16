@@ -230,3 +230,31 @@ def smooth_path(path: PathType, obstacle_checker: ObstacleChecker, downsample_fa
     print(f"  [DEBUG] smooth_path final check: goal=({original_goal[0]:.4f}, {original_goal[1]:.4f}), result[-1]=({result[-1][0]:.4f}, {result[-1][1]:.4f})")
     
     return result
+
+def theta_smooth_path(path: PathType, obstacle_checker: ObstacleChecker) -> PathType:
+    """
+    Smooth thetas along the path: for any section where theta changes, try to keep theta constant (as the value at the start of the section),
+    as long as this does not introduce a collision. Returns a new path with possibly smoothed thetas.
+    """
+    if len(path) < 2:
+        return path
+    smoothed = list(path)
+    n = len(path)
+    for i in range(n - 2):
+        theta0 = smoothed[i][2]
+        # Try to keep theta0 for as long as possible
+        for j in range(i + 2, n):
+            # Try replacing thetas from i+1 to j with theta0
+            candidate = smoothed[:i+1] + [(smoothed[k][0], smoothed[k][1], theta0) for k in range(i+1, j+1)] + smoothed[j+1:]
+            collision = False
+            for k in range(i, j):
+                if not obstacle_checker.is_path_clear(candidate[k], candidate[k+1]) or obstacle_checker.is_collision(candidate[k+1]):
+                    collision = True
+                    break
+            if not collision:
+                # Accept this smoothing
+                for k in range(i+1, j+1):
+                    smoothed[k] = (smoothed[k][0], smoothed[k][1], theta0)
+            else:
+                break
+    return smoothed
