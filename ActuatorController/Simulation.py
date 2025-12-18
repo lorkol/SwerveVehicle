@@ -21,19 +21,12 @@ from ActuatorController.ActuatorController import ActuatorController
 from Scene.Robot import Robot
 
 class SwerveSimulatorGUI:
-    """TODO: Class docstring.
-
-    Attributes:
-        TODO: describe attributes
+    """ 
+    TODO: Class docstring.
     """
     def __init__(self, root):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         self.root = root
         self.root.title("Swerve Drive Physics Simulator")
@@ -127,13 +120,8 @@ class SwerveSimulatorGUI:
 
     def _build_controls(self):
         # 1. Simulation Control
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         sim_box = ttk.LabelFrame(self.control_frame, text="Simulation Control", padding="5")
         sim_box.pack(fill=tk.X, pady=5)
@@ -184,13 +172,10 @@ class SwerveSimulatorGUI:
         self.global_steering_slider = self._add_slider(input_box, "All Wheels Steering (deg)", -720, 720, 0.0, None, command=self.update_all_steering)
 
     def _add_slider(self, parent, label, min_val, max_val, init_val, param_key, command=None):
-        """TODO: Add docstring.
-
+        """
+        TODO: Add docstring.
         Args:
             TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
         """
         frame = ttk.Frame(parent)
         frame.pack(fill=tk.X, pady=2)
@@ -232,15 +217,13 @@ class SwerveSimulatorGUI:
         for ctrl in self.wheel_controls:
             ctrl['delta'].set(val)
 
+    # Update internal dict
     def update_robot_param(self, key, value):
-        # Update internal dict
-        """TODO: Add docstring.
+        """
+        TODO: Add docstring.
 
         Args:
             TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
         """
         if key in self.robot_params:
             self.robot_params[key] = value
@@ -254,13 +237,8 @@ class SwerveSimulatorGUI:
         self.controller = ActuatorController(self.robot)
 
     def toggle_play(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         self.running = not self.running
         if self.running:
@@ -271,13 +249,8 @@ class SwerveSimulatorGUI:
             self.lbl_status.configure(text="Status: Paused", foreground="red")
 
     def reset_sim(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         self.running = False
         self.btn_play.configure(text="Play")
@@ -295,13 +268,7 @@ class SwerveSimulatorGUI:
     def get_inputs(self):
         # Extract angles (convert from degrees to radians) and torques from sliders
         """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
-        """
+            """
         angles = []
         torques = []
         for ctrl in self.wheel_controls:
@@ -310,13 +277,8 @@ class SwerveSimulatorGUI:
         return np.array(angles), np.array(torques)
 
     def update_physics(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         if not self.running:
             return
@@ -348,13 +310,8 @@ class SwerveSimulatorGUI:
             self.path_y.pop(0)
 
     def draw_robot(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         x, y, theta = self.state[0], self.state[1], self.state[2]
         L = self.robot_params["Dimensions"]["Length"]
@@ -426,13 +383,8 @@ class SwerveSimulatorGUI:
         self.canvas.draw()
 
     def update_loop(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+        """
+        TODO: Add docstring.
         """
         start = time.time()
         

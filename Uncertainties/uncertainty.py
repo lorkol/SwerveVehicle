@@ -3,7 +3,8 @@ import numpy as np
 
 def add_state_estimation_uncertainty(pos_stddev: float, orient_stddev: float,
                                      lin_vel_stddev: float, ang_vel_stddev: float) -> np.ndarray:
-    """TODO: Add docstring.
+    """
+    TODO: Add docstring.
 
     Args:
         TODO: describe parameters
@@ -17,7 +18,8 @@ def add_state_estimation_uncertainty(pos_stddev: float, orient_stddev: float,
                      0.0, 0.0, 0.0, 0.0])
     
 def add_force_uncertainty(max_fx: float, max_fy: float, max_torque: float) -> np.ndarray:
-    """TODO: Add docstring.
+    """
+    TODO: Add docstring.
 
     Args:
         TODO: describe parameters

@@ -3,33 +3,15 @@ import numpy as np
 
 
 class ReferenceGenerator(ABC):
+    """ a class to generate reference states and velocities for the controllers"""
     @abstractmethod
-    """TODO: Class docstring.
-
-    Attributes:
-        TODO: describe attributes
-    """
     def get_reference_state(self) -> np.ndarray:
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
-        """
+        """Returns the reference state for the controller - position and orientation only """
         pass
     
     @abstractmethod
     def get_reference_velocity(self) -> np.ndarray:
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
-        """
+        """Returns the reference velocity for the controller - linear and angular velocities only """
         pass
     
 class SimpleReferenceGenerator(ReferenceGenerator):

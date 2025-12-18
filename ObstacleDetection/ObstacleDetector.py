@@ -15,10 +15,7 @@ class ObstacleChecker(ABC):
         """TODO: Add docstring.
 
         Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+            segment_num_samples: Number of samples to use when checking path clearance
         """
         self._segment_num_samples: int = segment_num_samples
     
@@ -42,13 +39,14 @@ Robot_Geom = Tuple[List[Point2D], float, float, float, List[Tuple[float, float]]
 class StaticObstacleChecker(ObstacleChecker):
     """Concrete implementation of ObstacleChecker for static obstacles and rectangular robot."""
     def __init__(self, robot: Robot, obstacles: List[Obstacle], map_limits: Tuple[Tuple[float, float], Tuple[float, float]], use_parallelization: bool = False, segment_num_samples: int = 20, collision_clearance: float = 0.0) -> None:
-        """TODO: Add docstring.
-
+        """
         Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
+            robot: The robot instance for which collision checking is performed.
+            obstacles: List of obstacles in the environment.
+            map_limits: Tuple specifying the (x_min, x_max) and (y_min, y_max) limits of the map.
+            use_parallelization: Whether to use parallel processing for collision checks.
+            segment_num_samples: Number of samples to use when checking path clearance.
+            collision_clearance: Minimum clearance distance from obstacles (in meters).
         """
         super().__init__(segment_num_samples)
         self._robot: Robot = robot
@@ -419,7 +417,6 @@ class StaticObstacleChecker(ObstacleChecker):
                     return True
             return False
     
-    # TODO: use num_samples from parameters
     def is_path_clear(self, state1: State2D, state2: State2D) -> bool:
         """
         Check if a straight-line path between two states is collision-free.

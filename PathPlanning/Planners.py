@@ -10,11 +10,6 @@ from scipy.interpolate import splprep, splev
 
 
 class PlannerTypes(Enum):
-    """TODO: Class docstring.
-
-    Attributes:
-        TODO: describe attributes
-    """
     AStarPlanner = "AStarPlanner"
     HybridAStarPlanner = "HybridAStarPlanner"
     RRTStarPlanner = "RRTStarPlanner"
@@ -48,14 +43,6 @@ class Node:
         return self.f_cost < other.f_cost
     
     def __eq__(self, other: object) -> bool:
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
-        """
         if not isinstance(other, Node):
             return False
         return self.state == other.state

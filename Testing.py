@@ -64,14 +64,7 @@ class Simulation:
         self.controller: Controller = None # type: ignore # Will be created after path is planned
     
     def init_scene(self):
-        """TODO: Add docstring.
-
-        Args:
-            TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
-        """
+        """TODO: Add docstring."""
         noise_params: Dict[str, Any] = self.params["Noise"]
         self.state_uncertainty: Dict[str, Any] = noise_params["State Estimation Uncertainty"]
         # Create robot and map
@@ -118,12 +111,13 @@ class Simulation:
         if path is None:
             print("❌ No path found!")
             return None
-        path = smooth_path(path, self.obstacle_checker, downsample_factor=1)
+        # path = smooth_path(path, self.obstacle_checker, downsample_factor=1)
         print(f"[OK] Path found with {len(path)} waypoints")
         return path
     
     def _get_local_planner_reference_state_method(self, path) -> Callable:
-        """TODO: Add docstring.
+        """
+        TODO: Add docstring.
 
         Args:
             TODO: describe parameters
@@ -461,13 +455,11 @@ class Simulation:
 
             def get_progress(x, y):
                 # Find closest segment and fraction along path
-                """TODO: Add docstring.
+                """
+                TODO: Add docstring.
 
                 Args:
                     TODO: describe parameters
-
-                Returns:
-                    TODO: describe return value
                 """
                 dists = np.linalg.norm(path_points[:, :2] - np.array([x, y]), axis=1)
                 idx = np.argmin(dists)
@@ -634,7 +626,7 @@ class Simulation:
         print("=" * 60)
         
         # Plan path
-        path = self.plan_path() # TODO: Can make a path from another source - what's called in get_controller() if oath is None
+        path = self.plan_path() # TODO: Can make a path from another source - what's called in get_controller() if path is None
         if path is None:
             return
         # Generate trajectory

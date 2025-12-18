@@ -10,13 +10,11 @@ class TrajectoryGenerator:
     for the MPC controller.
     """
     def __init__(self, dt: float, horizon: int, max_velocity: float = 2.0):
-        """TODO: Add docstring.
+        """
+        TODO: Add docstring.
 
         Args:
             TODO: describe parameters
-
-        Returns:
-            TODO: describe return value
         """
         self._dt: float = dt
         self._horizon: int = horizon

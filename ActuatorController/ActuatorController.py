@@ -5,10 +5,10 @@ from numpy.typing import NDArray
 from Scene.Robot import Robot
 
 class ActuatorController:
-    """TODO: Class docstring.
-
-    Attributes:
-        TODO: describe attributes
+    """Actuator Controller for a Swerve Drive Robot.
+    This class computes the necessary wheel steering angles and torques
+    to achieve desired accelerations in the robot frame.
+    Also does the inverse: given wheel angles and torques, compute resulting accelerations.
     """
     def __init__(self, robot: Robot) -> None:
         """Initializes the actuator controller for a swerve drive robot."""
