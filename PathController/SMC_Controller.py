@@ -51,11 +51,11 @@ class SMCController(Controller):
             TODO: describe return value
         """
         x, y, theta = state[0], state[1], state[2]
-        vx_R, vy_R, v_theta = state[3], state[4], state[5]
+        vx_G, vy_G, v_theta = state[3], state[4], state[5]
         
         c, s_ang = np.cos(theta), np.sin(theta)
-        vx_G: float = c * vx_R - s_ang * vy_R
-        vy_G: float = s_ang * vx_R + c * vy_R
+        # vx_G: float = c * vx_R - s_ang * vy_R
+        # vy_G: float = s_ang * vx_R + c * vy_R
         
         current_global_pos = np.array([x, y, theta])
         current_global_vel = np.array([vx_G, vy_G, v_theta])
@@ -110,6 +110,11 @@ class SMCController(Controller):
         ay_R = -s_ang * ax_G + c * ay_G
         
         u_robot = np.array([ax_R, ay_R, alpha_cmd])
+
+        if abs(u_robot[0]) >= 100 or abs(u_robot[1]) >= 100 or abs(u_robot[2]) >= 100:
+            print(f"[WARNING] Large control command detected: {u_robot}")
+            print(f"  Current Pos: {current_global_pos}, Vel: {current_global_vel}")
+            print(f"  Ref Pos: {ref_pos}, Vel: {ref_vel}")
 
         # --- 7. Inverse Dynamics ---
         deltas, torques = self.actuator.get_angles_and_torques(u_robot)
