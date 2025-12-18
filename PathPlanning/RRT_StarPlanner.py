@@ -185,7 +185,6 @@ class RRTStarPlanner(Planner):
         elapsed_time = time.time() - start_time
         print(f"    [RRT* Debug] Planning completed in {elapsed_time:.2f}s after {iterations} iterations")
         
-        
         if self._best_path:
             self._best_path = theta_smooth_path(self._best_path, self._obstacle_checker)
             # for i in range(len(self._best_path)):

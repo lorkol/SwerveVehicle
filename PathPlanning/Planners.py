@@ -240,21 +240,25 @@ def theta_smooth_path(path: PathType, obstacle_checker: ObstacleChecker) -> Path
         return path
     smoothed = path.copy()
     n = len(path)
-    for i in range(n - 2):
+    i = 0
+    while i < n - 2:
         theta0 = smoothed[i][2]
-        # Try to keep theta0 for as long as possible
+        # Greedily extend the segment with constant theta0
+        max_j = i + 1
         for j in range(i + 2, n):
-            # Try replacing thetas from i+1 to j with theta0
-            candidate = smoothed[:i+1] + [np.array([smoothed[k][0], smoothed[k][1], theta0]) for k in range(i+1, j+1)] + smoothed[j+1:]
             collision = False
-            for k in range(i, j):
-                if not obstacle_checker.is_path_clear(candidate[k], candidate[k+1]) or obstacle_checker.is_collision(candidate[k+1]):
-                    collision = True
-                    break
-            if not collision:
-                # Accept this smoothing
-                for k in range(i+1, j+1):
-                    smoothed[k] = np.array([smoothed[k][0], smoothed[k][1], theta0])
-            else:
+            # Only check the new segment (j-1, j) for collision
+            test_from = np.array([smoothed[j][0], smoothed[j][1], theta0])
+            if not obstacle_checker.is_path_clear(smoothed[j-1], test_from) or obstacle_checker.is_collision(test_from):
+                collision = True
+            if collision:
                 break
+            max_j = j
+        # Apply smoothing for the longest valid segment
+        if max_j > i + 1:
+            for k in range(i + 1, max_j + 1):
+                smoothed[k] = np.array([smoothed[k][0], smoothed[k][1], theta0])
+            i = max_j
+        else:
+            i += 1
     return smoothed

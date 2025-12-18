@@ -104,9 +104,8 @@ class Simulation:
     
     def plan_path(self) -> Optional[PathType]:
         """Plan path using configured planner."""
-        planner = self.get_planner()
         print(f"\nPlanning path from {self.start} to {self.goal}...")
-        path = planner.plan(self.start, self.goal)
+        path = self.planner.plan(self.start, self.goal)
         
         if path is None:
             print("❌ No path found!")

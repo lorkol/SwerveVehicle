@@ -85,15 +85,15 @@ class PygameSimulation(Simulation):
         # Draw a Magenta Crosshair
         size = 12
         color = (255, 0, 255) # Magenta
-        pygame.draw.line(self.screen, color, (cx - size, cy), (cx + size, cy), 2)
-        pygame.draw.line(self.screen, color, (cx, cy - size), (cx, cy + size), 2)
+        pygame.draw.line(self.screen, color, (cx - size, cy), (cx + size, cy), 2) # type: ignore
+        pygame.draw.line(self.screen, color, (cx, cy - size), (cx, cy + size), 2) # type: ignore
         # Optional: Draw a small direction line for theta_ref
         if len(ref_state) > 2:
             theta_ref = ref_state[2]
             end_x = rx + 0.5 * math.cos(theta_ref)
             end_y = ry + 0.5 * math.sin(theta_ref)
             ex, ey = self.world_to_screen(end_x, end_y)
-            pygame.draw.line(self.screen, color, (cx, cy), (ex, ey), 1)
+            pygame.draw.line(self.screen, color, (cx, cy), (ex, ey), 1) # type: ignore
     
     def draw_robot(self, state):
         """Draws the robot body, heading arrow, and 4 steerable wheels with outlines."""
@@ -133,7 +133,7 @@ class PygameSimulation(Simulation):
         # Rotate and Blit Body
         rotated_body = pygame.transform.rotate(robot_surf, math.degrees(theta))
         body_rect = rotated_body.get_rect(center=self.world_to_screen(x, y))
-        self.screen.blit(rotated_body, body_rect)
+        self.screen.blit(rotated_body, body_rect) # type: ignore
 
         # --- 3. Draw Wheels (High Contrast) ---
         # Surface for the wheel
@@ -168,32 +168,32 @@ class PygameSimulation(Simulation):
             # Rotate and Blit Wheel
             rotated_wheel = pygame.transform.rotate(wheel_surf, math.degrees(total_angle))
             wheel_rect = rotated_wheel.get_rect(center=screen_pos)
-            self.screen.blit(rotated_wheel, wheel_rect)
+            self.screen.blit(rotated_wheel, wheel_rect) # type: ignore
     
     def draw_map(self):
         for obstacle in self.map_obj.obstacles:
             if obstacle.shape == ConvexShape.Circle:
                 cx, cy = self.world_to_screen(obstacle.center[0], obstacle.center[1]) # type: ignore
                 radius_px = int(obstacle.radius * self.pixels_per_meter) # type: ignore
-                pygame.draw.circle(self.screen, self.COLOR_OBSTACLE, (cx, cy), radius_px)
+                pygame.draw.circle(self.screen, self.COLOR_OBSTACLE, (cx, cy), radius_px) # type: ignore
             elif obstacle.shape == ConvexShape.Polygon:
                 points_px = [self.world_to_screen(p[0], p[1]) for p in obstacle.points]
-                pygame.draw.polygon(self.screen, self.COLOR_OBSTACLE, points_px)
+                pygame.draw.polygon(self.screen, self.COLOR_OBSTACLE, points_px) # type: ignore
 
         gx, gy = self.world_to_screen(self.goal[0], self.goal[1])
-        pygame.draw.circle(self.screen, self.COLOR_GOAL, (gx, gy), 10)
+        pygame.draw.circle(self.screen, self.COLOR_GOAL, (gx, gy), 10) # type: ignore
 
     def draw_path(self, path):
         if path is None or len(path) < 2: return
         screen_points = [self.world_to_screen(p[0], p[1]) for p in path]
-        pygame.draw.lines(self.screen, self.COLOR_PATH, False, screen_points, 2)
+        pygame.draw.lines(self.screen, self.COLOR_PATH, False, screen_points, 2) # type: ignore
 
     def draw_trail(self):
         if len(self.executed_states) < 2: return
         # Optimization: step by 5 to save performance
         screen_points = [self.world_to_screen(s[0], s[1]) for s in self.executed_states[::5]]
         if len(screen_points) > 1:
-            pygame.draw.lines(self.screen, self.COLOR_TRAIL, False, screen_points, 1)
+            pygame.draw.lines(self.screen, self.COLOR_TRAIL, False, screen_points, 1) # type: ignore
     
     def draw_wind_field(self, disturbance_force):
         """
@@ -254,10 +254,10 @@ class PygameSimulation(Simulation):
                 ey = cy - arrow_len_px * math.sin(angle) 
                 
                 # Draw Line
-                pygame.draw.line(self.screen, wind_color, (cx, cy), (ex, ey), 1)
+                pygame.draw.line(self.screen, wind_color, (cx, cy), (ex, ey), 1) # type: ignore
                 
                 # Draw Arrowhead (Simple dot or small lines)
-                pygame.draw.circle(self.screen, wind_color, (int(ex), int(ey)), 2)
+                pygame.draw.circle(self.screen, wind_color, (int(ex), int(ey)), 2) # type: ignore
                 
                 current_y += step_y_m
             current_x += step_x_m
@@ -330,7 +330,7 @@ class PygameSimulation(Simulation):
                         self.sim_finished = True
 
                 # Rendering
-                self.screen.fill(self.COLOR_BG)
+                self.screen.fill(self.COLOR_BG) # type: ignore
                 self.draw_map()
                 self.draw_wind_field(current_disturbance)
                 self.draw_path(path)
@@ -345,16 +345,16 @@ class PygameSimulation(Simulation):
                     f"Vel: {np.linalg.norm(current_state[3:5]):.2f} m/s",
                 ]
                 for i, line in enumerate(ui_text):
-                    text_surf = self.font.render(line, True, (255, 255, 255))
-                    self.screen.blit(text_surf, (15, 15 + i * 25))
+                    text_surf = self.font.render(line, True, (255, 255, 255)) # type: ignore
+                    self.screen.blit(text_surf, (15, 15 + i * 25)) # type: ignore
 
                 pygame.display.flip()
-                self.clock.tick(60)
+                self.clock.tick(60) # type: ignore
 
         finally:
             # --- FIXED: Save Screenshot BEFORE Quitting ---
             print("Saving Pygame screenshot...")
-            pygame.image.save(self.screen, "pygame_final_state.png")
+            pygame.image.save(self.screen, "pygame_final_state.png") # type: ignore
             print("Saved to 'pygame_final_state.png'")
             
             pygame.quit()
