@@ -79,12 +79,6 @@ When enabling noise or disturbances in `Parameters.json`, use these heuristics t
 * **Parameter Uncertainty:** When mass or inertia is unknown, the **ASMC** is the recommended controller. Set a small `gammas` (e.g., 0.01) to allow the system to learn the mass drift slowly without inducing instability.
 * **Lookahead Smoothing:** For very noisy environments, increasing the `lookahead` distance in **PurePursuit** (e.g., to 3.0 or 4.0) acts as a geometric low-pass filter, resulting in smoother trajectories.
 
-General Controller use recommendation
------------------------------------
-* If using only parametric uncertainties - use the MRAC controller
-* If using no noise - use the LQR controller
-* If using only Dynamic Disturbance: Use the SMC Controller
-* For any mix - use the ASMC Controller
 
 ### Usage Recommendation
 > **Note:** Use the **ASMC** controller if **both** `Parameter Uncertainty` and `Dynamic Disturbance` are set to `true` in `Parameters.json`. While standard SMC can handle disturbances, only ASMC can effectively compensate for a mismatched mass matrix, ensuring the robot doesn't undershoot or overshoot due to incorrect model assumptions.
@@ -158,7 +152,7 @@ For $\eta > |\tau_d|_{max}$, we ensure $\dot{V} \leq 0$, guaranteeing asymptotic
 
 Key runnable files
 ------------------
-- `Testing.py` — runs the full planner + controller test harness (planning, controller simulation, visualization).
+- `SimulateController.py` — runs the full planner + controller test harness (planning, controller simulation, visualization).
 - `ActuatorController/Simulation.py` — GUI / dynamic simulation for the low-level actuator model (Swerve simulator).
 - `PathController/PointFollowing/SMCPoint_Controller.py` — standalone point-following SMC controller simulation and interactive visualizer.
 - `Scene/SceneGenerator.py` — generate obstacle scenes/maps and save them to Scene/Configuration.json for planners to use.
