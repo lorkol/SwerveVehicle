@@ -40,7 +40,7 @@
     },
     "Control":
     {
-        "dt": 0.1,
+        "dt": 0.05,
         "StabilizationRadius": 0.3,
         "Cascading Controllers":
         {
@@ -50,12 +50,23 @@
                 "PurePursuit":
                 {
                     "lookahead": 2.0,
-                    "v_desired": 2.0                }
+                    "v_desired": 5.0
+                }
             },
             "Controller":
             {
-                "type": "LQR"
-            },           
+                "type": "ASMC"
+            },
+            "ASMC":
+            {
+                "etas": [10.0, 10.0, -2.0],
+                "k_d": [5.0, 5.0, -1.0],
+                "k_p": [5.0, 5.0, -1.0],
+                "boundary_layer": 0.5,
+                "mass_matrix_min": [0.1, 0.1, 0.1],
+                "mass_matrix_max": [20.0, 20.0, 20.0],
+                "gammas": [0.1, 0.1, 0.01]
+            },
             "MRAC":
             {
                 "gamma": 0.1,

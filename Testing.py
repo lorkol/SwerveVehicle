@@ -161,6 +161,15 @@ class Simulation:
             Q = controller_params["Q"]
             R = controller_params["R"]
             controller: Controller = LQRController(robot_controller=self.actuator_controller_est, get_reference_method=self._get_local_planner_reference_state_method(path), dt=dt, Q=Q, R=R)
+        elif controller_type == ControllerTypes.ASMC:
+            etas: np.ndarray = controller_params["etas"]
+            k_d: np.ndarray = controller_params["k_d"]
+            boundary_layer: float = controller_params["boundary_layer"]
+            mass_matrix_min: np.ndarray = controller_params["mass_matrix_min"]
+            mass_matrix_max: np.ndarray = controller_params["mass_matrix_max"]
+            gammas: np.ndarray = controller_params["gammas"]            
+            k_p: np.ndarray = controller_params["k_p"]
+            controller: Controller = ACMSController(robot_controller=self.actuator_controller_est, get_reference_method=self._get_local_planner_reference_state_method(path), etas=etas, lambda_p=k_p,k_d=k_d, boundary_layer=boundary_layer, mass_matrix_min=mass_matrix_min, mass_matrix_max=mass_matrix_max, gammas=gammas)
         elif controller_type == ControllerTypes.MRAC:
             gamma: float = controller_params["gamma"]
             kp: float = controller_params["kp"]

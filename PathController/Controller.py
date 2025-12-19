@@ -15,6 +15,7 @@ class ControllerTypes(Enum):
     """
     LQR = "LQR"
     MRAC = "MRAC"
+    ASMC = "ASMC"
     SMC = "SMC"
     MPPI = "MPPI"
     MPC = "MPC"
