@@ -57,17 +57,17 @@ class SMCController:
 
         # --- SMC Tuning Parameters ---
         
-        # Lambda (λ): The slope of the sliding surface. 
+        # Lambda: The slope of the sliding surface. 
         # Determines how fast the error decays once we are "on the rails" (on the surface).
         # Higher = Faster decay, but requires more control authority.
         self._lambda_gain: np.ndarray = np.diag(lambda_gains) 
 
         # K (Gain): The switching gain (Aggressiveness).
         # Determines how hard we push to get back to the surface if we are off.
-        # Must be larger than the upper bound of your system's disturbances (friction/model error).
+        # Must be larger than the upper bound of the system's disturbances (friction/model error).
         self._k_gain: np.ndarray = np.diag(k_gains)
         
-        # Phi (Φ): Boundary layer width.
+        # Phi: Boundary layer width.
         # Smooths the transition around s=0 to prevent chattering.
         # Tanh(s/phi) behaves like sign(s) but is smooth near zero.
         self._boundary_layer: float = boundary_layer
@@ -92,17 +92,16 @@ class SMCController:
         current_global_pos = np.array([x, y, theta])
         current_global_vel = np.array([vx_G, vy_G, v_theta])
 
-        # --- 2. Get Reference (The "Carrot") ---
+        # --Get Reference (The "Carrot") ---
         # ref_state: [x_r, y_r, th_r, vx_r, vy_r, vth_r]
         
         ref_pos = self.reference_generator.get_reference_state(t)
         ref_vel = self.reference_generator.get_reference_velocity(t)
         
         # For this implementation, we assume constant speed segments (ref_accel = 0)
-        # If your path generator supported curvature acceleration, you would add it here.
         ref_accel: State = self.reference_generator.get_reference_acceleration(t)
 
-        # --- 3. Calculate Errors ---
+        # --- Calculate Errors ---
         # e = x_ref - x
         e_pos = ref_pos - current_global_pos
         
@@ -112,12 +111,12 @@ class SMCController:
         # e_dot = v_ref - v
         e_vel = ref_vel - current_global_vel
 
-        # --- 4. Define Sliding Surface (s) ---
+        # ---Define Sliding Surface (s) ---
         # The goal is to drive 's' to zero.
         # s = e_dot + lambda * e
         s = e_vel + self._lambda_gain @ e_pos
 
-        # --- 5. Compute Control Law (u) ---
+        # ---Compute Control Law (u) ---
         # We derived: u = a_ref + lambda * e_dot + K * tanh(s/phi)
         
         # Term A: Equivalent Control (The effort to stay ON the surface if we are already there)

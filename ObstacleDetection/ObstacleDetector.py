@@ -10,7 +10,7 @@ from Types import ConvexShape, State2D, Point2D
 
 
 class ObstacleChecker(ABC):
-    """Abstract base class for obstacle checking - implement with your obstacle detection."""
+    """Abstract base class for obstacle checking - implement with obstacle detection."""
     def __init__(self, segment_num_samples: int = 20) -> None:
         """TODO: Add docstring.
 

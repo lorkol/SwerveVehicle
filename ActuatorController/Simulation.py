@@ -316,22 +316,6 @@ class SwerveSimulatorGUI:
         x, y, theta = self.state[0], self.state[1], self.state[2]
         L = self.robot_params["Dimensions"]["Length"]
         W = self.robot_params["Dimensions"]["Width"]
-
-        # Calculate corners for rotation
-        # Center is x,y. 
-        # Local corners: (+L/2, +W/2), etc.
-        # NOTE: Your ActuatorController uses L and W as half-lengths relative to center?
-        # Checking ActuatorController: wheel positions are [self._l, -self._w].
-        # Usually standard is L=Length, l=L/2. 
-        # Let's assume the parameters passed to Robot are FULL dimensions, 
-        # but the ActuatorController might store them differently. 
-        # Robot.py: self.length = json["Length"].
-        # ActuatorController.py: self._l = robot.length.
-        # IF ActuatorController treats robot.length as the distance from center (half-length), 
-        # then the drawing size should be 2*L. 
-        # IF ActuatorController treats it as full length, it calculates torque with full length as arm.
-        # Based on: `arm_length = math.sqrt(self._l**2 + self._w**2)` in init, 
-        # it seems ActuatorController treats .length as the distance from center (radius-like).
         
         # Drawing assuming .length is distance from center (Half-Length)
         # because ActuatorController uses it directly for torque arms.
@@ -355,12 +339,6 @@ class SwerveSimulatorGUI:
         # Rotate and translate
         rot_corners = corners @ R.T + np.array([x, y])
         
-        # Update Rectangle (using a polygon would be easier, but let's just set xy)
-        # Matplotlib Rectangle takes bottom-left. We need to calculate it.
-        # Actually, since it rotates, we can't use standard Rectangle easily without transforms.
-        # Let's simple remove and redraw a polygon, or set transform.
-        # Easiest for real-time: Clear and plot lines.
-        
         self.robot_rect.remove()
         # Create a polygon for the chassis
         self.robot_rect = Polygon(rot_corners, closed=True, fill=False, edgecolor='blue', lw=2)
@@ -376,9 +354,6 @@ class SwerveSimulatorGUI:
         
         # Update Trail
         self.trail_line.set_data(self.path_x, self.path_y)
-        
-        # Center view on robot if it goes off screen?
-        # Or just keep fixed. Let's keep fixed but adjustable via toolbar (default matplotlib toolbar)
         
         self.canvas.draw()
 

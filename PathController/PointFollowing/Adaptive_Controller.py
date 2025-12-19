@@ -34,12 +34,10 @@ class AdaptiveController:
         self.Kp = np.array([5.0, 5.0, 3.0])  # x, y, theta
         self.Kd = np.array([2.0, 2.0, 1.5])  # vx, vy, omega
         
-        # --- 2. Adaptation Rates Gamma ---
         # How fast we learn
         # TODO: Get from Params
         self.Gamma = np.array([0.5, 0.1]) # [Mass_rate, Inertia_rate]
         
-        # --- 3. Initial Estimates theta_hat ---
         # [Estimated Mass, Estimated Inertia]
         # TODO: Get from initial config
         self.theta_hat = np.array([5.0, 0.5]) 
@@ -48,7 +46,6 @@ class AdaptiveController:
         self.theta_min = np.array([0.1, 0.01])
         self.theta_max = np.array([50.0, 10.0])
 
-        # --- 4. Lyapunov Matrix P ---
         # We solve A^T P + PA = -Q for each DOF to find the correct error mixing
         # A = [[0, 1], [-kp, -kd]]
         self.P_matrices = []
@@ -77,7 +74,6 @@ class AdaptiveController:
         
         e_dot = target_vel - q_dot
         
-        # --- 2. Control Law ---
         # u = M_hat * (q_ddot_d + Kd*e_dot + Kp*e)
         # This is the "Certainty Equivalence" controller
         
@@ -90,7 +86,6 @@ class AdaptiveController:
         # Compute commanded Force/Torque
         F_cmd = M_hat @ ref_accel
         
-        # --- 3. Build Regressor Y (Slide 23) ---
         # We need Y such that: Y * theta = M * ref_accel
         # theta = [m, I]
         # Y must be 3x2 matrix
@@ -99,12 +94,11 @@ class AdaptiveController:
         Y[1, 0] = ref_accel[1] # y-accel scales with Mass
         Y[2, 1] = ref_accel[2] # angular-accel scales with Inertia
         
-        # --- 4. Adaptation Update Law ---
         # dot_theta = Gamma * (Weighted_Error) * Y
         # Weighted_Error comes from x^T P b
         
         update_signal = np.zeros(3)
-        B = np.array([0, 1]) # Input matrix B from Slide 24
+        B = np.array([0, 1])
         
         for i in range(3):
             # Error state x = [e, e_dot]
@@ -115,7 +109,7 @@ class AdaptiveController:
             weighted_err = x_error.T @ self.P_matrices[i] @ B
             update_signal[i] = weighted_err
             
-        # Compute adaptation rate (Slide 27 formula)
+        # Compute adaptation rate
         # dot_theta = Gamma * Y.T * update_signal
         # We typically add a regressor filtering or normalization in practice, 
         # but sticking to the pure lecture form:
@@ -127,14 +121,13 @@ class AdaptiveController:
         # Safety Clamping
         self.theta_hat = np.clip(self.theta_hat, self.theta_min, self.theta_max)
         
-        # --- 5. Return Control Output ---
-        # Return F_cmd (Force_x, Force_y, Torque_z) to be used by your 
+        # Return F_cmd (Force_x, Force_y, Torque_z) to be used by the 
         # get_accels_in_world or similar inverse dynamics
         return F_cmd, self.theta_hat
 
     def get_accels_for_robot(self, F_cmd):
         # Convert the Calculated Forces back to Accels using the ESTIMATED parameters
-        # This is what you pass to your robot's 'get_angles_and_torques'
+        # This is what you pass to the robot's 'get_angles_and_torques'
         # if it expects acceleration inputs.
         """TODO: Add docstring.
 
@@ -163,7 +156,6 @@ if __name__ == "__main__":
         robot_cfg = config["Robot"]
     else:
         # Fallback if config file isn't found in this specific path structure
-        # (Mocking values for standalone test)
         class MockRobot:
             """TODO: Class docstring.
 

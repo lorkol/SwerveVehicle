@@ -35,7 +35,6 @@ class MRACController(Controller):
         self._initialized: bool = False
 
     def get_command(self, state: State_Vector, debug: bool = False) -> Control_Vector:
-        # --- 1. State Conversion (Robot -> Global) ---
         """
         TODO: Add docstring.
 
@@ -53,28 +52,27 @@ class MRACController(Controller):
         # vy_G = s * vx_R + c * vy_R
         current_global = np.array([x, y, theta, vx_G, vy_G, v_theta])
 
-        # --- 2. Initialization Safety ---
         # On the very first run, snap the internal model to the robot's actual position.
         # Otherwise, the error will be huge (Robot at 10, Model at 0) and gains will explode.
         if not self._initialized:
             self.xm = current_global.copy()
             self._initialized = True
 
-        # --- 3. Get Reference (The Rabbit) ---
+        # --- Get Reference (The Rabbit) ---
         # Get the moving target based on path geometry
         ref: State6D = self.get_reference_method(np.array([x, y, theta]))
 
-        # --- 4. Calculate Tracking Error (Sync Times) ---
+        # --- Calculate Tracking Error (Sync Times) ---
         # Compare Robot(t) vs Model(t) BEFORE updating the model
         tracking_err = current_global[:3] - self.xm[:3]
 
-        # --- 5. Update Adaptation (Based on Sync Error) ---
+        # --- Update Adaptation (Based on Sync Error) ---
         # If robot is behind model, increase alpha
         self.alpha_hat += -self._gamma * tracking_err * self._dt
         # Clamp to prevent instability (e.g. don't let it reverse control or grow infinite)
         self.alpha_hat = np.clip(self.alpha_hat, self._alpha_min, self._alpha_max)
 
-        # --- 6. Compute Control Signal ---
+        # --- Compute Control Signal ---
         # Calculate Nominal Control
         real_pos_err = current_global[:3] - ref[:3]
         real_pos_err[2] = (real_pos_err[2] + np.pi) % (2 * np.pi) - np.pi # Angle wrap
@@ -86,7 +84,6 @@ class MRACController(Controller):
         # Apply Adaptive Gain
         u_global = u_nominal * self.alpha_hat
 
-        # --- 6.5. Acceleration Limiting ---
         # Clip accelerations to physically achievable limits
         max_lin = self.actuator.max_linear_accel * 0.9  # 90% safety margin
         max_ang = self.actuator.max_angular_accel * 0.9
@@ -101,7 +98,7 @@ class MRACController(Controller):
         # Clip angular acceleration
         u_global[2] = np.clip(u_global[2], -max_ang, max_ang)
 
-        # --- 7. Update Reference Model (Prepare for NEXT Step) ---
+        # --- Update Reference Model (Prepare for NEXT Step) ---
         # Now move the model to t+1 so it is ready for the next loop.
         # Calculate acceleration for the model based on where it is NOW.
         pos_err_model = self.xm[:3] - ref[:3]

@@ -38,19 +38,17 @@ class PurePursuitController(LocalPlanner):
             
         Returns:
             ref_state: [x_carrot, y_carrot, theta_path, v_x, v_y, omega_ref]
-            Note: The Next step in the Cascading Controller will ignore x_carrot/y_carrot because you mask them,
-            but we return them for visualization/debug.
         """
         rx, ry = current_pose[0], current_pose[1]
 
-        # --- 1. Find the Lookahead Point (Carrot) ---
+        # ---Find the Lookahead Point (Carrot) ---
         carrot_idx, carrot_point = self._find_lookahead_point(rx, ry, self._lookahead, debug)
         if debug: print(f"[PurePursuit] Current pose: {current_pose}, Carrot idx: {carrot_idx}, Carrot point: {carrot_point}")
         
         # Update index so we don't search behind us next time
         self._last_index = carrot_idx
 
-        # --- 2. Calculate Velocity Vector (Translation) ---
+        # ---Calculate Velocity Vector (Translation) ---
         # Vector from Robot -> Carrot
         dx = carrot_point[0] - rx
         dy = carrot_point[1] - ry
@@ -66,11 +64,11 @@ class PurePursuitController(LocalPlanner):
             # We are ON the carrot (end of path)
             vx_ref, vy_ref = 0.0, 0.0
 
-        # --- 3. Retrieve Heading (Rotation) ---
+        # ---Retrieve Heading Theta ---
         # We take theta directly from the path planner (Point index 2)
         # This allows independent rotation for obstacle avoidance
 
-        # --- 4. Construct Reference State ---
+        # ---Construct Reference State ---
         # [x_ref, y_ref, theta_ref, vx_ref, vy_ref, vtheta_ref=0.0]
         ref_state = np.array([carrot_point[0], carrot_point[1], carrot_point[2], vx_ref, vy_ref, 0.0])
         if debug: print(f"[PurePursuit] Reference state: {ref_state}")
@@ -175,7 +173,6 @@ class PurePursuitController(LocalPlanner):
         valid_intersections: PathType = []
         
         # Check which points are actually on the segment p1-p2
-        # We can use a dot product or bounding box check
         min_x, max_x = min(p1[0], p2[0]), max(p1[0], p2[0])
         min_y, max_y = min(p1[1], p2[1]), max(p1[1], p2[1])
         epsilon: float = 1e-5
@@ -196,7 +193,7 @@ class PurePursuitController(LocalPlanner):
                 
                 valid_intersections.append(np.array([cx, cy, c_theta]))
                 
-        # Sort by distance from p1 so we pick the furthest one along the segment
+        # Sort by distance from p1 to pick the closest one along the segment
         valid_intersections.sort(key=lambda p: np.hypot(p[0] - p1[0], p[1] - p1[1]))
         
         return valid_intersections

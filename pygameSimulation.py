@@ -3,7 +3,6 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-# Import your existing Simulation class
 from Testing import Simulation
 from Uncertainties.uncertainty import add_force_uncertainty, add_state_estimation_uncertainty
 from Types import ConvexShape
@@ -78,7 +77,6 @@ class PygameSimulation(Simulation):
         if ref_state is None: return
         
         # ref_state is [x_ref, y_ref, theta_ref, ...]
-        # We only need x and y for the crosshair
         rx, ry = ref_state[0], ref_state[1]
         cx, cy = self.world_to_screen(rx, ry)
         
@@ -249,7 +247,6 @@ class PygameSimulation(Simulation):
                 cx, cy = self.world_to_screen(current_x, current_y)
                 
                 # Calculate end point of the arrow
-                # Note: Screen Y is flipped, so we subtract dy
                 ex = cx + arrow_len_px * math.cos(angle)
                 ey = cy - arrow_len_px * math.sin(angle) 
                 

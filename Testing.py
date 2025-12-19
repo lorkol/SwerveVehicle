@@ -31,6 +31,7 @@ from PathController.Controller import Controller, ControllerTypes
 from PathController.LQR_Controller import LQRController
 from PathController.MRAC_Controller import MRACController
 from PathController.SMC_Controller import SMCController
+from PathController.ASMCController import ACMSController
 
 
 class Simulation:      
@@ -246,7 +247,6 @@ class Simulation:
                                                         self.state_uncertainty["Linear Velocity Noise StdDev"], self.state_uncertainty["Angular Velocity Noise StdDev"])
             else:
                 noise = 0.0
-            # --- New: Windowed stabilization check ---
             stabilized_by_window = False
             if len(executed_states) > stabilization_window:
                 recent_states = np.array(executed_states[-stabilization_window:])
@@ -416,7 +416,6 @@ class Simulation:
                 ax1.add_patch(polygon)
         
         # Reference trajectory
-        # Reference trajectory (now just the path for LQR/MRAC)
         ref_x = ref_traj[0, :]
         ref_y = ref_traj[1, :]
         ax1.plot(ref_x, ref_y, 'g--', linewidth=1, label='Reference Path', alpha=0.7)

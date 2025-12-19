@@ -83,6 +83,14 @@ class ActuatorController:
             [tau_1, tau_2, tau_3, tau_4]
         ])
     
+    def get_M_matrix(self) -> np.ndarray:
+        """Returns the mass/inertia matrix of the robot."""
+        return self._M_MATRIX
+    
+    def update_M_matrix(self, M_matrix: np.ndarray) -> None:
+        """Sets the mass/inertia matrix of the robot."""
+        self._M_MATRIX = M_matrix
+    
     def get_angles_and_torques(self, accels: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Analytical inverse dynamics: Find steering angles and wheel torques
@@ -90,14 +98,11 @@ class ActuatorController:
         
         Strategy: Vector Addition (Linear Force + Rotational Force)
         """
-        # Step 1: Calculate desired Net Forces/Moments at CoM
         F_R = np.dot(self._M_MATRIX, accels)  # F = M * a
         Fx_target, Fy_target, Tau_target = F_R
         
-        # Step 2: Distribute forces to each wheel
         # We assume equal load distribution (1/4 force per wheel)
-        # Wheel positions relative to center (Order: FR, FL, RL, RR based on your B matrix)
-        # Based on build_B: 
+        # Wheel positions relative to center (Order: FR, FL, RL, RR)
         # 1: (+L, -W), 2: (+L, +W), 3: (-L, +W), 4: (-L, -W)
         wheel_positions = np.array([
             [self._l, -self._w], # 1
@@ -144,7 +149,6 @@ class ActuatorController:
             
             # Direction Check:
             # Wheels can spin forward or backward. Optimization:
-            # If the required angle is > 90 deg from current, flip force and angle?
             # For this simple implementation, we assume infinite steering speed 
             # and just output the exact vector direction.
             
@@ -152,8 +156,6 @@ class ActuatorController:
             
             # Optimization: If the force opposes the steering direction, flip torque?
             # The atan2 above ensures force is always positive in the direction of delta.
-            # However, if we wanted to support reversing the wheel to minimize steering:
-            # (Not implemented here to keep it stable for now)
             
             wheel_angles.append(delta)
             wheel_torques.append(torque)
@@ -222,7 +224,6 @@ class ActuatorController:
         sin_theta = math.sin(theta)
         
         # Convert linear accelerations: a_G = R * a_R
-        # This is the straightforward transformation without centripetal terms
         ax_G = cos_theta * ax_R - sin_theta * ay_R
         ay_G = sin_theta * ax_R + cos_theta * ay_R
         
@@ -276,7 +277,6 @@ class ActuatorController:
         # Unpack current state
         x, y, theta, vx_R, vy_R, v_theta = X
 
-        # --- 1. Calculate accelerations in the Robot Frame ---
         B_mat = self._build_B(wheel_angles)
         F_R = (B_mat / self._r).dot(wheel_torques)
 
@@ -284,7 +284,6 @@ class ActuatorController:
         accels_R = np.linalg.solve(self._M_MATRIX, F_R)
         ax_R, ay_R, a_theta = accels_R
 
-        # --- 2. Calculate velocities in the Global Frame ---
         R_mat = np.array([
             [math.cos(theta), -math.sin(theta)],
             [math.sin(theta), math.cos(theta)]
@@ -293,7 +292,7 @@ class ActuatorController:
         V_G = R_mat.dot(V_R)
         vx_G, vy_G = V_G
 
-        # --- 3. Assemble dX/dt vector ---
+        # --- Assemble dX/dt vector ---
         dXdt = np.array([
             vx_G,
             vy_G,
